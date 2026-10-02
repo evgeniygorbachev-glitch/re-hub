@@ -698,6 +698,14 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
         contract: `ДС от ${s0.toLocaleDateString('ru-RU')}`, type: 'КДА', signed: iso(s0), opsStart: iso(addDays(s0, 30)), opsEnd: iso(e0), planEnd: iso(e0), area: Math.round(o.area * between(0.1, 0.25)), rate: Math.round(o.lease.rate * 1.1), rentYear: 0 });
     }
   }
+  // опционы на расширение: предварительный договор (ПДА) на дополнительную площадь, ещё не принятую в аренду
+  for (const o of objects.filter((x) => x.business === 'logistics' && x.status === 'В эксплуатации')) {
+    if (rnd() < 0.35) {
+      const s0 = addDays(TODAY, -int(30, 200)), dl = addDays(TODAY, int(60, 400));
+      o.units.push({ rowNo: `${o.units[0].rowNo}.опц`, kind: 'Опцион на расширение', code: o.card.code, name: `${o.name} (опцион)`, subtype: o.card.subtype, leaseStatus: 'Не принят в эксплуатацию',
+        contract: `ПДА-${s0.getFullYear()}/${int(1, 99)}`, type: 'ПДА', signed: iso(s0), opsStart: null, opsEnd: null, planEnd: iso(dl), area: Math.round(o.area * between(0.15, 0.45)), rate: Math.round(o.lease.rate * between(0.95, 1.1)), rentYear: 0 });
+    }
+  }
   function PPL_NAME(id) { const p = people.find((x) => x.id === id); return p ? p.name : null; }
 
   window.DB = { TODAY: iso(TODAY), businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets, itChannels, itDevices, itLaunch, itTickets };
@@ -937,7 +945,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       { h: 'Код', v: (x) => x.o.card.code, f: (x) => `<b>${esc(x.o.card.code)}</b>` },
       { h: 'Локация', v: (x) => x.o.name, f: (x) => `<b>${esc(x.o.name)}</b><div class="muted small">${esc(x.o.address)}</div>` },
       { h: 'Тип', v: (x) => x.o.card.subtype, f: (x) => esc(x.o.card.subtype) },
-      { h: 'Договоров и ДС', num: 1, v: (x) => (x.o.units || []).length, f: (x) => { const us = x.o.units || []; const a = us.filter((u) => u.leaseStatus === 'В аренде').length; return us.length > 1 ? `${us.length}${a !== us.length ? ` <span class="muted small">(${a} действ.)</span>` : ''}` : '1'; } },
+      { h: 'Договоров и ДС', num: 1, v: (x) => (x.o.units || []).length, f: (x) => { const us = x.o.units || []; const op = us.filter((u) => /опцион/i.test(u.kind || '')).length; const a = us.filter((u) => u.leaseStatus === 'В аренде' && !/опцион/i.test(u.kind || '')).length; return us.length > 1 ? `${us.length}${a !== us.length ? ` <span class="muted small">(${a} действ.${op ? ` · ${op} опцион` : ''})</span>` : ''}` : '1'; } },
       { h: 'Бизнес', v: (x) => x.o.business, f: (x) => BUS[x.o.business].name },
       { h: 'Регион', v: (x) => REG[x.o.region].name, f: (x) => REG[x.o.region].name },
       { h: 'Площадь, м²', num: 1, v: (x) => x.o.area, f: (x) => fmt(x.o.area) },
@@ -986,7 +994,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   function objRisks(o) {
     const c = o.card, k = c.contract, r = [];
     (c.manualRisks || []).forEach((t) => r.push(['warn', t]));
-    (o.units || []).filter((u) => u.leaseStatus === 'В аренде' && u.planEnd).forEach((u) => { const l = days(D.TODAY, u.planEnd); if (l >= 0 && l < 365 && u.planEnd !== o.lease.end) r.push(['warn', `ДС ${u.rowNo || u.code}: договор истекает через ${l} дн`]); });
+    (o.units || []).filter((u) => /опцион/i.test(u.kind || '')).forEach((u) => r.push(['warn', `Опцион на расширение +${fmt(u.area || 0)} м² (${u.contract || u.rowNo}) — решение о реализации${u.planEnd ? ' до ' + dt(u.planEnd) : ''}`]));
+    (o.units || []).filter((u) => u.leaseStatus === 'В аренде' && !/опцион/i.test(u.kind || '') && u.planEnd).forEach((u) => { const l = days(D.TODAY, u.planEnd); if (l >= 0 && l < 365 && u.planEnd !== o.lease.end) r.push(['warn', `ДС ${u.rowNo || u.code}: договор истекает через ${l} дн`]); });
     if (/заверш/i.test(c.leaseStatus || '')) return r;
     const left = leaseDaysLeft(o);
     if (!o.lease.end) r.push(['warn', 'Не указана дата окончания договора']);
@@ -1057,21 +1066,23 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     <div class="card"><h2>Проекты на локации</h2>${ps.length ? gantt(ps) : '<div class="muted">Проектов нет</div>'}</div>`;
     if (tab === 'units') {
       const us = o.units || [];
-      const act = us.filter((u) => u.leaseStatus === 'В аренде');
+      const isOpt = (u) => /опцион/i.test(u.kind || '');
+      const act = us.filter((u) => u.leaseStatus === 'В аренде' && !isOpt(u)), opts = us.filter(isOpt);
       const W = 900, lw = 250, rh = 30;
       const ds = us.flatMap((u) => [u.signed || u.opsStart, u.opsEnd || u.planEnd]).filter(Boolean).map((x) => new Date(x).getTime());
       let tl = '';
       if (ds.length) {
         const t0 = Math.min(...ds), t1 = Math.max(...ds, new Date(D.TODAY).getTime()) + 60 * 864e5, X = (d) => lw + ((new Date(d).getTime() - t0) / (t1 - t0)) * (W - lw - 10);
-        tl = `<svg viewBox="0 0 ${W} ${us.length * rh + 24}" width="100%">` + us.map((u, i) => { const y = i * rh + 4, a0 = u.signed || u.opsStart, a1 = u.opsEnd || u.planEnd || D.TODAY; const on = u.leaseStatus === 'В аренде'; return `<text x="${lw - 8}" y="${y + 14}" font-size="11.5" text-anchor="end">${esc((u.rowNo ? u.rowNo + ' · ' : '') + (u.contract || u.code || '').slice(0, 30))}</text>${a0 ? `<rect x="${X(a0)}" y="${y + 3}" width="${Math.max(2, X(a1) - X(a0))}" height="14" rx="3" fill="${on ? '#3b5bdb' : '#adb5bd'}" opacity=".8"><title>${esc(u.name)}: ${dt(a0)} — ${dt(a1)}, ${fmt(u.area || 0)} м²</title></rect><text x="${Math.min(X(a1) + 5, W - 70)}" y="${y + 14}" font-size="10.5" fill="#6b7385">${fmt(u.area || 0)} м²</text>` : ''}`; }).join('') + `<line x1="${X(D.TODAY)}" x2="${X(D.TODAY)}" y1="0" y2="${us.length * rh + 6}" stroke="#3b5bdb" stroke-dasharray="4 3"/><text x="${X(D.TODAY) + 3}" y="${us.length * rh + 18}" font-size="10" fill="#3b5bdb">сегодня</text></svg><div class="legend"><span><i style="background:#3b5bdb"></i>действует</span><span><i style="background:#adb5bd"></i>завершено</span><span>полоса — от подписания (или начала операций) до окончания</span></div>`;
+        tl = `<svg viewBox="0 0 ${W} ${us.length * rh + 24}" width="100%">` + us.map((u, i) => { const y = i * rh + 4, a0 = u.signed || u.opsStart, a1 = u.opsEnd || u.planEnd || D.TODAY; const on = u.leaseStatus === 'В аренде' && !isOpt(u), op = isOpt(u); return `<text x="${lw - 8}" y="${y + 14}" font-size="11.5" text-anchor="end">${esc((u.rowNo ? u.rowNo + ' · ' : '') + (u.contract || u.code || '').slice(0, 30))}</text>${a0 ? `<rect x="${X(a0)}" y="${y + 3}" width="${Math.max(2, X(a1) - X(a0))}" height="14" rx="3" fill="${op ? '#e67700' : on ? '#3b5bdb' : '#adb5bd'}" opacity=".8" ${op ? 'stroke="#e67700" stroke-dasharray="4 3" fill-opacity=".35"' : ''}><title>${esc(u.name)}: ${dt(a0)} — ${dt(a1)}, ${fmt(u.area || 0)} м²</title></rect><text x="${Math.min(X(a1) + 5, W - 70)}" y="${y + 14}" font-size="10.5" fill="#6b7385">${fmt(u.area || 0)} м²</text>` : ''}`; }).join('') + `<line x1="${X(D.TODAY)}" x2="${X(D.TODAY)}" y1="0" y2="${us.length * rh + 6}" stroke="#3b5bdb" stroke-dasharray="4 3"/><text x="${X(D.TODAY) + 3}" y="${us.length * rh + 18}" font-size="10" fill="#3b5bdb">сегодня</text></svg><div class="legend"><span><i style="background:#3b5bdb"></i>действует</span><span><i style="background:#e67700;opacity:.5"></i>опцион на расширение</span><span><i style="background:#adb5bd"></i>завершено / не принято</span><span>полоса — от подписания (или начала операций) до окончания</span></div>`;
       }
-      body = `<div class="kpis">${kpi('Договоров и ДС', us.length, `${act.length} действуют`)}${kpi('Площадь действующих', fmt(sum(act, (u) => u.area || 0)) + ' м²', `всего за историю ${fmt(sum(us, (u) => u.area || 0))} м²`)}${kpi('Аренда в год по действующим', mln(sum(act, (u) => u.rentYear || 0)))}${kpi('Операционные коды', esc([...new Set(us.map((u) => u.code).filter((x) => x && x !== '-'))].join(', ') || '—'))}</div>
+      body = `<div class="kpis">${kpi('Договоров и ДС', us.length, `${act.length} действуют`)}${kpi('Площадь действующих', fmt(sum(act, (u) => u.area || 0)) + ' м²', `всего за историю ${fmt(sum(us.filter((u) => !isOpt(u)), (u) => u.area || 0))} м² (без опционов)`)}${kpi('Аренда в год по действующим', mln(sum(act, (u) => u.rentYear || 0)))}${opts.length ? kpi('Опцион на расширение', '+' + fmt(sum(opts, (u) => u.area || 0)) + ' м²', `${opts.length} шт · ${opts.map((u) => esc(u.contract || u.rowNo)).join(', ')}`) : ''}${kpi('Операционные коды', esc([...new Set(us.map((u) => u.code).filter((x) => x && x !== '-'))].join(', ') || '—'))}</div>
       <div class="note">Локация — место, к которому подвязываются основной договор и все допсоглашения (блоки, корпуса, части площади). Каждая строка реестра — один договор или ДС. Операционный код склада — атрибут договора или ДС, а не ID локации: код может переезжать между локациями.</div>
       ${us.length ? `<div class="card" style="margin-bottom:14px"><h2>Рост локации во времени</h2>${tl}</div>` : ''}
       <div class="card">${tbl('units-' + id, [
         { h: '№ п/п', v: (u) => u.rowNo, f: (u) => esc(u.rowNo || '—') },
         { h: 'Код', v: (u) => u.code, f: (u) => `<b>${esc(u.code || '—')}</b>` },
         { h: 'Блок / назначение', v: (u) => u.name, f: (u) => `${esc(u.name)}<div class="muted small">${esc(u.subtype || '')}</div>` },
+        { h: 'Тип', v: (u) => u.kind || (us.indexOf(u) === 0 ? 'Основной' : 'ДС'), f: (u) => (isOpt(u) ? pill('опцион на расширение', 'warn') : /^дс|доп/i.test(u.contract || '') ? pill('ДС', 'acc') : pill('договор', 'neutral')) },
         { h: 'Договор / ДС', v: (u) => u.contract || '', f: (u) => fv(u.contract) },
         { h: 'Статус', v: (u) => u.leaseStatus, f: (u) => pill(u.leaseStatus || '—', u.leaseStatus === 'В аренде' ? 'good' : /не принят/i.test(u.leaseStatus || '') ? 'warn' : 'neutral') },
         { h: 'Подписан', v: (u) => u.signed || '', f: (u) => fv(u.signed, dt) },
