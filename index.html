@@ -678,6 +678,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   const idx = (arr, k = 'id') => Object.fromEntries(arr.map((x) => [x[k], x]));
   const OBJ = idx(D.objects), PRJ = idx(D.projects), PPL = idx(D.people), CTR = idx(D.contractors),
     WRK = idx(D.works), REG = idx(D.regions), BUS = idx(D.businesses), DIR = idx(D.directions), ACC = idx(D.acceptances), DEF = idx(D.defects);
+  const REAL = D.mode === 'real';
   const state = { business: '', direction: '', region: '', compare: new Set(), sort: {}, defStatus: '', defCtr: '', q: '', ticketCat: '' };
 
   // ---------- форматирование ----------
@@ -896,7 +897,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     });
     const cps = objs.map((o) => completeness(o).pct), withRisk = objs.filter((o) => objRisks(o).some((r) => r[0] === 'bad'));
     return `<h1>Объекты</h1><div class="sub">Единый реестр: код объекта сопоставлен с ключами в 1С, финмодели и Трекере. Поля карточки — по структуре реестра объектов (RENT-ROLL)</div>
-    <div class="kpis">${kpi('Объектов', objs.length, fmt(sum(objs, 'area')) + ' м² по ДДА')}${kpi('В аренде', objs.filter((o) => o.card.leaseStatus === 'В аренде').length, `${objs.length - objs.filter((o) => o.card.leaseStatus === 'В аренде').length} не приняты`)}${kpi('Средняя полнота карточек', pct0(cps.length ? sum(cps, (x) => x) / cps.length : 1), `${cps.filter((x) => x < 0.8).length} карточек < 80%`)}${kpi('С критичными рисками', `<span class="${withRisk.length ? 'bad' : ''}">${withRisk.length}</span>`)}${kpi('Договоры истекают < 12 мес', objs.filter((o) => leaseDaysLeft(o) < 365).length)}</div>
+    <div class="kpis">${kpi('Объектов', objs.length, fmt(sum(objs, 'area')) + ' м² по ДДА')}${kpi('В аренде', objs.filter((o) => o.card.leaseStatus === 'В аренде').length, (() => { const st = {}; objs.filter((o) => o.card.leaseStatus !== 'В аренде').forEach((o) => (st[o.card.leaseStatus || '—'] = (st[o.card.leaseStatus || '—'] || 0) + 1)); return Object.entries(st).map(([kk, v]) => `${esc(kk.toLowerCase())}: ${v}`).join(' · '); })())}${kpi('Средняя полнота карточек', pct0(cps.length ? sum(cps, (x) => x) / cps.length : 1), `${cps.filter((x) => x < 0.8).length} карточек < 80%`)}${kpi('С критичными рисками', `<span class="${withRisk.length ? 'bad' : ''}">${withRisk.length}</span>`)}${kpi('Договоры истекают < 12 мес', objs.filter((o) => o.card.leaseStatus === 'В аренде' && o.lease.end && leaseDaysLeft(o) >= 0 && leaseDaysLeft(o) < 365).length, `ещё ${objs.filter((o) => o.card.leaseStatus === 'В аренде' && o.lease.end && leaseDaysLeft(o) < 0).length} действующих с истёкшей датой`)}</div>
     <div style="margin-bottom:12px"><input type="search" id="q" placeholder="Поиск по названию, адресу, ID…" value="${esc(state.q)}" style="width:340px"/></div>
     <div class="card">${tbl('objects', [
       { h: 'Код', v: (x) => x.o.card.code, f: (x) => `<b>${esc(x.o.card.code)}</b>` },
@@ -949,8 +950,11 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   const completeness = (o) => { const c = o.card; const miss = REQUIRED.filter(([, f]) => { const v = f(c, o); return v == null || v === ''; }).map(([n]) => n); return { pct: 1 - miss.length / REQUIRED.length, miss }; };
   function objRisks(o) {
     const c = o.card, k = c.contract, r = [];
+    (c.manualRisks || []).forEach((t) => r.push(['warn', t]));
+    if (/заверш/i.test(c.leaseStatus || '')) return r;
     const left = leaseDaysLeft(o);
-    if (left < 0) r.push(['bad', 'Договор аренды истёк ' + dt(k.planEnd)]);
+    if (!o.lease.end) r.push(['warn', 'Не указана дата окончания договора']);
+    else if (left < 0) r.push(['bad', 'Договор аренды истёк ' + dt(k.planEnd)]);
     else if (left < 365 && !k.preemptive) r.push(['bad', `Договор истекает через ${left} дн, преимущественного права на пролонгацию нет`]);
     else if (left < 365) r.push(['warn', `Договор истекает через ${left} дн — готовить пролонгацию`]);
     if (k.pledge && k.pledgeConsent === false) r.push(['bad', 'Залог в ДДА без согласия залогодержателя']);
@@ -965,7 +969,9 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     return r;
   }
   const riskList = (rs) => (rs.length ? rs.map(([lv, t]) => `<div style="padding:6px 0;border-bottom:1px solid #f0f1f4"><span class="${lv}">●</span> ${esc(t)}</div>`).join('') : '<div class="good">Рисков не найдено</div>');
-  const OBJ_TABS = [['summary', 'Обзор'], ['passport', 'Паспорт и техника'], ['areas', 'Площади'], ['lease', 'Аренда и договор'], ['resp', 'Ответственность'], ['checks', 'Проверки и риски'], ['contacts', 'Контакты'], ['projects', 'Проекты и стройка'], ['arch', 'Архитектура'], ['assets', 'Оборудование и ОС'], ['it', 'ИТ'], ['ops', 'Эксплуатация']];
+  const HAS = { projects: D.projects.length > 0, arch: D.layouts.length > 0, assets: D.assets.length > 0, it: D.itChannels.length > 0, ops: D.tickets.length > 0 };
+  const OBJ_TABS_ALL = [['summary', 'Обзор'], ['passport', 'Паспорт и техника'], ['areas', 'Площади'], ['lease', 'Аренда и договор'], ['resp', 'Ответственность'], ['checks', 'Проверки и риски'], ['contacts', 'Контакты'], ['projects', 'Проекты и стройка'], ['arch', 'Архитектура'], ['assets', 'Оборудование и ОС'], ['it', 'ИТ'], ['ops', 'Эксплуатация']];
+  const OBJ_TABS = OBJ_TABS_ALL.filter(([k]) => HAS[k] !== false);
 
   V.object = (id, tab = 'summary') => {
     const o = OBJ[id]; if (!o) return '<h1>Объект не найден</h1>';
@@ -999,23 +1005,24 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     if (tab === 'passport') body = `<div class="grid g2">
       <div>${kvCard('Паспорт', [['Код объекта', esc(c.code)], ['Название', esc(o.name)], ['Тип', esc(c.subtype)], ['Корпус / здание', fv(c.building)], ['Бизнес', BUS[o.business].name], ['Регион', REG[o.region].name], ['Адрес', esc(o.address)], ['Класс', esc(c.cls)], ['Статус аренды', esc(c.leaseStatus)], ['Начало операций', fv(c.opsStart, dt)], ['Окончание операций', c.opsEnd ? dt(c.opsEnd) : '—']])}
         ${kvCard('Складское оборудование', [['Мезонин', yn(c.storage.mezz)], ['Высотное стеллажное хранение', yn(c.storage.highbay)], ['Холодильная камера', yn(c.storage.cold)], ['Морозильная камера', yn(c.storage.freezer)], ['Помещение ЛВЖ/ГЖ', yn(c.storage.flammable)], ['Конвейер', yn(c.storage.conveyor)]], `<div class="muted small" style="margin-top:8px">Детально по единицам — во вкладке <a href="#/object/${id}/assets">Оборудование и ОС</a></div>`)}</div>
-      <div>${kvCard('Технические характеристики', [['Температура склада, не ниже', o.business === 'offices' ? '—' : fv(t.tWarehouse, (v) => v + ' °C')], ['Температура офиса, не ниже', fv(t.tOffice, (v) => v + ' °C')], ['Нагрузка на пол', fv(t.floorLoad, (v) => String(v).replace('.', ',') + ' т/м²')], ['Нагрузка на антресоль', c.storage.mezz ? fv(t.mezzLoad, (v) => fmt(v) + ' кг/м²') : '—'], ['Нагрузка на офис', fv(t.officeLoad, (v) => v + ' кг/м²')], ['Высота до низа конструкций', fv(t.height, (v) => String(v).replace('.', ',') + ' м')], ['Электромощность', fv(t.powerKw, (v) => fmt(v) + ' кВт')], ['Категория электроснабжения', fv(t.powerCat)], ['ДГУ', t.dguKw ? t.dguKw + ' кВт' : 'нет'], ['Водоснабжение', fv(t.waterM3, (v) => String(v).replace('.', ',') + ' м³/сут')], ['Ворота / доки', t.gates], ['Пандусы', t.ramps], ['Входные группы', t.entrances]])}
+      <div>${kvCard('Технические характеристики', [['Температура склада, не ниже', o.business === 'offices' ? '—' : fv(t.tWarehouse, (v) => v + ' °C')], ['Температура офиса, не ниже', fv(t.tOffice, (v) => v + ' °C')], ['Нагрузка на пол', fv(t.floorLoad, (v) => String(v).replace('.', ',') + ' т/м²')], ['Нагрузка на антресоль', c.storage.mezz ? fv(t.mezzLoad, (v) => fmt(v) + ' кг/м²') : '—'], ['Нагрузка на офис', fv(t.officeLoad, (v) => v + ' кг/м²')], ['Высота до низа конструкций', fv(t.height, (v) => String(v).replace('.', ',') + ' м')], ['Электромощность', fv(t.powerKw, (v) => fmt(v) + ' кВт')], ['Категория электроснабжения', fv(t.powerCat)], ['ДГУ', t.dguKw ? t.dguKw + ' кВт' : 'нет'], ['Водоснабжение', fv(t.waterM3, (v) => String(v).replace('.', ',') + ' м³/сут')], ['Ворота / доки', fv(t.gates)], ['Пандусы', fv(t.ramps)], ['Входные группы', fv(t.entrances)]])}
+        ${c.notes && Object.keys(c.notes).length ? kvCard('Исходные значения реестра, которые не удалось разобрать', Object.entries(c.notes).map(([kk, v]) => [esc(kk), `<span class="nf">${esc(v)}</span>`])) : ''}
         ${kvCard('Инженерные системы', [['Отопление', c.eng.heating], ['Вентиляция', c.eng.vent], ['Кондиционирование', c.eng.ac], ['АПТ (автом. пожаротушение)', c.eng.apt], ['АПС', c.eng.aps], ['СОУЭ', c.eng.soue]], `<div class="muted small" style="margin-top:8px">Кто отвечает за каждую систему — во вкладке <a href="#/object/${id}/resp">Ответственность</a></div>`)}
-        ${kvCard('Парковка, машино-мест', [['Малотоннажные до 1,5 т', t.parking.lcv], ['3–5 т', t.parking.mid], ['10–15 т', t.parking.heavy], ['Фуры до 20 т', t.parking.truck], ['Легковые', t.parking.cars], ['Автобусы', t.parking.bus]])}</div></div>`;
+        ${kvCard('Парковка, машино-мест', [['Малотоннажные до 1,5 т', fv(t.parking.lcv)], ['3–5 т', fv(t.parking.mid)], ['10–15 т', fv(t.parking.heavy)], ['Фуры до 20 т', fv(t.parking.truck)], ['Легковые', fv(t.parking.cars)], ['Автобусы', fv(t.parking.bus)]])}</div></div>`;
     if (tab === 'areas') {
       const zones = [['Сухой склад', a.dry, '#4c6ef5'], ['Температурный склад', a.temp, '#15aabf'], ['Антресоль', a.antr, '#82c91e'], ['Торговый зал', a.sales, '#fab005'], ['АБК', a.abk, '#be4bdb'], ['Другие помещения', a.other, '#adb5bd']].filter((z) => z[1]);
-      body = `<div class="kpis">${kpi('Общая по ДДА', fmt(o.area) + ' м²')}${kpi('Продуктивная', fmt(productive) + ' м²', pct0(productive / o.area))}${kpi('Непродуктивная', fmt(nonprod) + ' м²', pct0(nonprod / o.area))}${kpi('Сверка с ДДА', productive + nonprod === o.area ? '<span class="good">сходится</span>' : `<span class="bad">расхождение ${fmt(o.area - productive - nonprod)} м²</span>`)}</div>
+      body = `<div class="kpis">${kpi('Общая по ДДА', fmt(o.area) + ' м²')}${kpi('Продуктивная', fmt(productive) + ' м²', pct0(productive / o.area))}${kpi('Непродуктивная', fmt(nonprod) + ' м²', pct0(nonprod / o.area))}${kpi('Сверка с ДДА', Math.abs(productive + nonprod - o.area) < 1 ? '<span class="good">сходится</span>' : `<span class="bad">расхождение ${fmt(o.area - productive - nonprod)} м²</span>`)}</div>
       <div class="grid g2"><div class="card"><h2>Площади по типам помещений</h2>${stack100([{ label: 'Структура', segs: zones.map(([n, v, col]) => ({ name: n, share: v / o.area, color: col })) }])}
         <table style="margin-top:8px"><tbody>${zones.map(([n, v, col]) => `<tr><td><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${col};margin-right:6px"></i>${n}</td><td class="num">${fmt(v)} м²</td><td class="num muted">${pct0(v / o.area)}</td><td class="num">${k.rates[{ 'Сухой склад': 'dry', 'Температурный склад': 'temp', 'Антресоль': 'antr', 'АБК': 'abk', 'Торговый зал': 'sales' }[n]] ? rub(k.rates[{ 'Сухой склад': 'dry', 'Температурный склад': 'temp', 'Антресоль': 'antr', 'АБК': 'abk', 'Торговый зал': 'sales' }[n]]) + '/м²/год' : '<span class="muted">—</span>'}</td></tr>`).join('')}</tbody></table></div>
         ${o.business === 'logistics' ? kvCard('Функциональное деление склада', [['Площадь ФФ (фулфилмент)', a.ff ? fmt(a.ff) + ' м²' : '—'], ['Площадь СЦ (сортировка)', a.sc ? fmt(a.sc) + ' м²' : '—'], ['Спецхранение', a.special ? fmt(a.special) + ' м²' : '—'], ['Зона брака', a.defect ? fmt(a.defect) + ' м²' : '—'], ['Зона возвратов', a.returns ? fmt(a.returns) + ' м²' : '—']]) : `<div class="card"><h2>Зонирование по стандарту формата</h2><div class="muted">Детальное зонирование — во вкладке <a href="#/object/${id}/arch">Архитектура</a></div></div>`}</div>`;
     }
-    if (tab === 'lease') body = `<div class="kpis">${kpi('Постоянная часть в год', mln(rentYear), 'без НДС')}${kpi('OPEX в год', mln(k.opexM2 * o.area), rub(k.opexM2) + '/м²/год')}${kpi('Переменная в мес.', rub(k.variable.utilities + k.variable.mop + (k.parkingMonth || 0)), 'коммуналка, МОП, парковка')}${kpi('Индексация', `${k.indexPct}%`, `${dt(k.indexDate)} · ${esc(k.indexMech)}`)}${kpi('Штраф за выход', `${mln(k.penaltyMin)} — ${mln(k.penaltyMax)}`, `без штрафа с ${dt(k.exitFree)}`)}</div>
-      <div class="grid g2"><div>${kvCard(`Договор ${src('1С')}`, [['Тип', esc(k.type)], ['Номер', esc(k.number)], ['Дата заключения', dt(k.signed)], ['Срок', k.term + ' лет'], ['Окончание плановое', `<span class="${left < 365 ? 'warn' : ''}">${dt(k.planEnd)}</span>`], ['Окончание фактическое', k.factEnd ? dt(k.factEnd) : '—'], ['Регистрация в Росреестре', `<span class="${k.type === 'ДДА' && k.rosreestr !== 'Зарегистрирован' ? 'bad' : ''}">${esc(k.rosreestr)}</span>`], ['Залог в ДДА', yn(k.pledge)], ['Согласие залогодержателя', k.pledge ? `<span class="${k.pledgeConsent ? '' : 'bad'}">${yn(k.pledgeConsent)}</span>` : '—'], ['Собственник', esc(k.owner)], ['ЮЛ арендодателя / ИНН', `${esc(k.landlordLE)} · ${k.landlordINN}`], ['Наше ЮЛ', esc(k.ourLE)], ['Скан договора', k.scanUrl ? '<a href="#" onclick="return false">открыть</a>' : NF]])}
+    if (tab === 'lease') body = `<div class="kpis">${kpi('Постоянная часть в год', mln(rentYear), 'без НДС')}${kpi('OPEX в год', mln(k.opexM2 * o.area), rub(k.opexM2) + '/м²/год')}${kpi('Переменная в мес.', rub(k.variable.utilities + k.variable.mop + (k.parkingMonth || 0)), 'коммуналка, МОП, парковка')}${kpi('Индексация', k.indexPct ? `${String(k.indexPct).replace('.', ',')}%` : NF, `${dt(k.indexDate)} · ${esc(k.indexMech)}`)}${kpi('Штраф за выход', `${mln(k.penaltyMin || 0)} — ${mln(k.penaltyMax || 0)}`, `без штрафа с ${dt(k.exitFree)}`)}</div>
+      <div class="grid g2"><div>${kvCard(`Договор ${src('1С')}`, [['Тип', esc(k.type)], ['Номер', esc(k.number)], ['Дата заключения', dt(k.signed)], ['Срок', fv(k.term, (v) => v + ' лет')], ['Окончание плановое', `<span class="${left < 365 ? 'warn' : ''}">${dt(k.planEnd)}</span>`], ['Окончание фактическое', k.factEnd ? dt(k.factEnd) : '—'], ['Регистрация в Росреестре', `<span class="${k.type === 'ДДА' && k.rosreestr !== 'Зарегистрирован' ? 'bad' : ''}">${esc(k.rosreestr)}</span>`], ['Залог в ДДА', yn(k.pledge)], ['Согласие залогодержателя', k.pledge ? `<span class="${k.pledgeConsent ? '' : 'bad'}">${yn(k.pledgeConsent)}</span>` : '—'], ['Собственник', esc(k.owner)], ['ЮЛ арендодателя / ИНН', `${esc(k.landlordLE)} · ${k.landlordINN}`], ['Наше ЮЛ', esc(k.ourLE)], ['Скан договора', k.scanUrl ? '<a href="#" onclick="return false">открыть</a>' : NF]])}
         ${kvCard('Пролонгация и индексация', [['Последняя пролонгация', fv(k.lastProl, dt)], ['Ближайшая пролонгация', dt(k.nextProl)], ['Условия пролонгации', esc(k.prolCond)], ['Преимущественное право', yn(k.preemptive)], ['Дата индексации', dt(k.indexDate)], ['% индексации', k.indexPct + '%'], ['Механизм', esc(k.indexMech)]])}</div>
         <div>${kvCard('Ставки, ₽/м² в год без НДС', [['Сухой склад', fv(k.rates.dry, rub)], ['Температурный склад', a.temp ? fv(k.rates.temp, rub) : '—'], ['Антресоль', a.antr ? fv(k.rates.antr, rub) : '—'], ['Торговый зал', a.sales ? fv(k.rates.sales, rub) : '—'], ['АБК', fv(k.rates.abk, rub)], ['OPEX', rub(k.opexM2)], ['Парковка, в мес.', fv(k.parkingMonth, rub)]])}
         ${kvCard('Переменная часть, в мес.', [['Коммунальные услуги', rub(k.variable.utilities)], ['МОП и инфраструктура парка', k.variable.mop ? rub(k.variable.mop) : '—'], ['Вывоз снега (сезон)', fv(k.variable.snow, rub)]])}
         ${kvCard('Оплата и обеспечение', [['Условия оплаты', esc(k.payTerms)], ['Обеспечительный платёж', rub(k.deposit)], ['Страхование', fv(k.insurance)], ['Субаренда', k.sublease ? 'разрешена' : 'запрещена']])}
-        ${kvCard('Расторжение и выход', [['Выход без штрафа', 'с ' + dt(k.exitFree)], ['Выход со штрафом', 'с ' + dt(k.exitPenaltyFrom)], ['Штраф min / max', `${mln(k.penaltyMin)} / ${mln(k.penaltyMax)}`], ['Уведомление (наше)', k.tenantNotice + ' мес.'], ['Расторжение арендодателем', esc(k.landlordTerminate)], ['Уведомление (арендодателя)', k.landlordNotice + ' мес.']])}
+        ${kvCard('Расторжение и выход', [['Выход без штрафа', 'с ' + dt(k.exitFree)], ['Выход со штрафом', 'с ' + dt(k.exitPenaltyFrom)], ['Штраф min / max', `${mln(k.penaltyMin || 0)} / ${mln(k.penaltyMax || 0)}`], ...(k.exitNote ? [['Комментарий', esc(k.exitNote)]] : []), ['Уведомление (наше)', fv(k.tenantNotice, (v) => (typeof v === 'number' ? v + ' мес.' : esc(v)))], ['Расторжение арендодателем', esc(k.landlordTerminate)], ['Уведомление (арендодателя)', fv(k.landlordNotice, (v) => (typeof v === 'number' ? v + ' мес.' : esc(v)))]])}
         ${kvCard('Штрафы по ДДА', [['Ремонт / перепланировка с нарушением', fv(k.fines.replan, rub)], ['Парковка не по назначению', fv(k.fines.parking, rub)], ['Неинформирование о предписаниях', fv(k.fines.noInform, rub)], ['Нарушения ПБ, min — max', k.fines.fireMin || k.fines.fireMax ? `${fv(k.fines.fireMin, rub)} — ${fv(k.fines.fireMax, rub)}` : NF]])}</div></div>`;
     if (tab === 'resp') {
       const cnt = { 'А': 0, 'Я': 0, 'П': 0 }; c.resp.forEach((s) => s.rows.forEach((r) => cnt[r.who]++));
@@ -1244,7 +1251,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       { h: 'На 1000 м²/мес', num: 1, v: (r) => r.per, f: (r) => r.per.toFixed(1).replace('.', ',') },
       { h: 'SLA', num: 1, v: (r) => r.sla, f: (r) => (r.n ? `<span class="${sev(1 - r.sla, 0.1, 0.2)}">${pct0(r.sla)}</span>` : '—') },
       { h: 'Затраты', num: 1, v: (r) => r.cost, f: (r) => (r.cost ? rub(r.cost) : '—') },
-      { h: 'Инженер', v: (r) => PPL[r.o.opsEngineer].name, f: (r) => person(r.o.opsEngineer) },
+      { h: 'Инженер', v: (r) => PPL[r.o.opsEngineer]?.name || '', f: (r) => person(r.o.opsEngineer) },
     ], objRows)}</div>
     <div class="card"><h2>Тикеты${state.ticketCat ? ': ' + esc(state.ticketCat) : ''}</h2>${ticketsTable('ops-t', [...shown].sort((a, b) => b.created.localeCompare(a.created)))}</div>`;
   };
@@ -1314,7 +1321,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       { h: 'Индекс к формату', num: 1, v: (r) => r.idx, f: (r) => pill(r.idx.toFixed(2).replace('.', ','), r.idx > 1.2 ? 'bad' : r.idx > 1.08 ? 'warn' : 'good') },
       { h: 'В год', num: 1, v: (r) => r.year, f: (r) => mln(r.year) },
       { h: 'Договор до', v: (r) => r.left, f: (r) => `<span class="${r.left < 0 ? 'bad' : r.left < 180 ? 'warn' : ''}">${dt(r.o.lease.end)}${r.left < 0 ? ' · истёк' : r.left < 180 ? ` · ${r.left} дн` : ''}</span>` },
-      { h: 'Менеджер', v: (r) => PPL[r.o.leaseManager].name, f: (r) => person(r.o.leaseManager) },
+      { h: 'Менеджер', v: (r) => PPL[r.o.leaseManager]?.name || '', f: (r) => person(r.o.leaseManager) },
     ], rows)}</div>`;
   };
 
@@ -1771,8 +1778,11 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   function openPhoto(src_) { $('#modal').innerHTML = `<div class="box" style="max-width:820px"><div style="text-align:right"><button class="btn" data-close>✕</button></div><img src="${src_}" style="width:100%;border-radius:8px;margin-top:8px"/></div>`; $('#modal').classList.remove('hidden'); }
 
   // ---------- роутер и события ----------
+  const ROUTE_HAS = { overview: !REAL, projects: HAS.projects, compare: HAS.projects, arch: HAS.arch, benchmark: HAS.projects, defects: HAS.projects, acceptances: HAS.projects, ops: HAS.ops, assets: HAS.assets, asset: HAS.assets, it: HAS.it, people: !REAL, person: !REAL };
+  document.querySelectorAll('#nav a').forEach((a) => { if (ROUTE_HAS[a.dataset.r] === false) a.style.display = 'none'; });
   function render() {
-    const [, route = 'overview', param, sub] = location.hash.split('/');
+    let [, route = REAL ? 'objects' : 'overview', param, sub] = location.hash.split('/');
+    if (ROUTE_HAS[route] === false) route = 'objects';
     const fn = V[route] || V.overview;
     renderFilters();
     $('#view').innerHTML = fn(param && decodeURIComponent(param), sub && decodeURIComponent(sub));
