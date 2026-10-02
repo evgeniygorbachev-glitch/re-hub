@@ -117,6 +117,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       <a href="#/assets" data-r="assets">Оборудование и ОС</a>
       <a href="#/it" data-r="it">ИТ-инфраструктура</a>
       <a href="#/people" data-r="people">Люди</a>
+      <a href="#/audit" data-r="audit">Контроль и аудит</a>
       <a href="#/lease" data-r="lease">Аренда</a>
       <a href="#/about" data-r="about" style="margin-top:10px;border:1px solid #2c3550">О проекте</a>
     </nav>
@@ -132,6 +133,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   <main>
     <div style="background:#fff4e0;color:#8a4b00;font-size:12px;padding:6px 24px;border-bottom:1px solid #f5d9a8">Прототип для обсуждения · все данные синтетические · <a href="#/about">о проекте</a></div>
     <header class="filters" id="filters"></header>
+    <div id="rolebar" style="display:none;background:#e8edff;color:#2b3a8f;font-size:12px;padding:6px 24px;border-bottom:1px solid #c9d3ff"></div>
     <section id="view"></section>
   </main>
   <div id="modal" class="modal hidden"></div>
@@ -719,7 +721,42 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   }
   function PPL_NAME(id) { const p = people.find((x) => x.id === id); return p ? p.name : null; }
 
-  window.DB = { TODAY: iso(TODAY), businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets, itChannels, itDevices, itLaunch, itTickets };
+  // ---------- Аудит: реквизиты подрядчиков и заложенные схемы обмана (демо, чтобы проверить, что контроли их ловят) ----------
+  people.forEach((p) => { p.phone = fakePhone(); });
+  contractors.forEach((c) => {
+    c.founded = TODAY.getFullYear() - int(1, 18); c.inn = String(int(7700000000, 7799999999)); c.director = fakeName(); c.phone = fakePhone();
+    c.bank = '40702810' + String(int(100000000000, 999999999999));
+  });
+  // аффилированность: у «Северной Линии» телефон совпадает с телефоном руководителя проектов, компания молодая
+  const cAff = contractors.find((c) => c.id === 'c9'); cAff.phone = people.find((p) => p.id === 'petrov').phone; cAff.founded = TODAY.getFullYear();
+  const byProj = (pid) => projects.find((p) => p.id === pid);
+  const pickN = (arr, n) => { const a = [...arr], out = []; while (out.length < n && a.length) out.push(a.splice(Math.floor(rnd() * a.length), 1)[0]); return out; };
+  // приписки объёмов: объём «м²» больше физически возможного для площади локации
+  for (const p of pickN(projects.filter((x) => x.lines.some((l) => works.find((w) => w.id === l.work).unit === 'м²')), 3)) {
+    const l = p.lines.find((x) => works.find((w) => w.id === x.work).unit === 'м²');
+    l.qty = Math.round(objects.find((o) => o.id === p.object).area * between(1.5, 1.9)); l.sum = l.qty * l.price;
+  }
+  // двойное выставление: та же работа повторно в другом акте
+  for (const p of pickN(projects.filter((x) => x.lines.length > 2), 3)) { const l = p.lines[1]; p.lines.push({ ...l, act: 2, dup: true }); }
+  // переплата сверх принятого объёма
+  for (const p of pickN(projects.filter((x) => !x.done && x.progress > 20), 4)) p.paid = Math.round(p.costForecast * p.progress / 100 * between(1.18, 1.4));
+  // приёмка «своими»: акт подписал РП проекта вместо технадзора
+  for (const a of pickN(acceptances, 4)) a.inspector = byProj(a.project).manager;
+  // одно фото в разных актах
+  for (const d of pickN(defects.filter((x) => x.status !== 'Устранено'), 3)) { const twin = defects.find((x) => x.cat === d.cat && x.id !== d.id && x.object !== d.object); if (twin) d.photoOf = twin.id; }
+  // закрытие тикета без подтверждения площадки
+  tickets.forEach((t) => { t.confirmed = !t.resolved || rnd() > 0.06; });
+  // журнал изменений критичных мастер-данных
+  const mdLog = [];
+  for (let i = 0; i < 12; i++) {
+    const c = pick(contractors), when = addDays(TODAY, -int(1, 120));
+    const field = pick(['Банковский счёт', 'Банковский счёт', 'Контактный телефон', 'Юридический адрес', 'Руководитель']);
+    const who = pick(people.filter((p) => p.role === 'Руководитель проектов' || p.role === 'Менеджер аренды')).id;
+    const approved = !(field === 'Банковский счёт' && i % 5 === 0);
+    mdLog.push({ id: 'MD-' + String(i + 1).padStart(3, '0'), date: iso(when), entity: 'Подрядчик', ref: c.id, field, who, approvedBy: approved ? pick(people.filter((p) => p.id !== who && p.role !== 'Технадзор')).id : null });
+  }
+
+  window.DB = { TODAY: iso(TODAY), businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets, itChannels, itDevices, itLaunch, itTickets, mdLog };
 })();
 </script>
   <script>
@@ -731,7 +768,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     WRK = idx(D.works), REG = idx(D.regions), BUS = idx(D.businesses), DIR = idx(D.directions), ACC = idx(D.acceptances), DEF = idx(D.defects);
   // mixed — закрытая версия: локации и аренда из реального реестра, остальные разделы на демо-данных
   const MIXED = D.mode === 'mixed';
-  const state = { business: '', direction: '', region: '', compare: new Set(), sort: {}, defStatus: '', defCtr: '', q: '', ticketCat: '' };
+  const state = { role: (() => { try { return localStorage.getItem('rehub.role') || 'exec'; } catch (e) { return 'exec'; } })(), business: '', direction: '', region: '', compare: new Set(), sort: {}, defStatus: '', defCtr: '', q: '', ticketCat: '' };
 
   // ---------- форматирование ----------
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -768,7 +805,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   function renderFilters() {
     const sel = (key, label, items) => `<label>${label}<select data-filter="${key}"><option value="">Все</option>${items.map((i) => `<option value="${i.id}" ${state[key] === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>`;
     $('#filters').innerHTML = sel('business', 'Бизнес', D.businesses) + sel('direction', 'Направление', D.directions) + sel('region', 'Регион', D.regions) +
-      `<span class="muted small" style="margin-left:auto">Направление фильтрует проекты, замечания и приёмки</span>`;
+      `<span class="muted small" style="margin-left:auto">Направление фильтрует проекты, замечания и приёмки</span>` +
+      `<label title="Демо ролевого доступа: в системе роль берётся из учётной записи">Роль<select data-role>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${state.role === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`;
   }
 
   // ---------- бенчмарк: нормализация цен ----------
@@ -1884,6 +1922,161 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       ${tbl('as-' + o.id, assetCols(false), as, { href: assetHref })}<div class="muted small" style="margin-top:6px">МОЛ: ${person(as[0].mol)}</div></div>`;
   }
 
+  // ================= КОНТРОЛЬ И АУДИТ =================
+  const ROLES = { exec: 'Руководитель', audit: 'Аудитор', control: 'Контроль и риски', pm: 'Руководитель проекта', ops: 'Эксплуатация', lease: 'Аренда' };
+  const ACCESS = { audit: ['exec', 'audit', 'control'] };
+  const canSee = (route) => !ACCESS[route] || ACCESS[route].includes(state.role);
+  const SEV = { crit: ['Критичный', 'bad'], high: ['Высокий', 'warn'], mid: ['Средний', 'neutral'] };
+  const EX_STATUS = [['Новый', 'neutral'], ['В разборе', 'acc'], ['Объяснено', 'good'], ['Нарушение подтверждено', 'bad']];
+  const CTR_ = (id) => D.contractors.find((c) => c.id === id);
+  const EX_OVERRIDE = () => { try { return JSON.parse(localStorage.getItem('rehub.exstatus') || '{}'); } catch (e) { return {}; } };
+  const canJudge = () => state.role === 'audit' || state.role === 'control';
+  const READONLY_ROLES = ['audit'];
+
+  function auditSignals() {
+    const os = new Set(fObjects().map((o) => o.id));
+    const prs = D.projects.filter((p) => os.has(p.object));
+    const out = [];
+    const add = (code, proc, sev, title, obj, amount, href, owner, key) => out.push({ code, proc, sev, title, obj, amount: Math.max(0, Math.round(amount || 0)), href, owner, key: key || code + obj + title });
+    const pm = (p) => p.manager;
+    // стройка и подряд
+    prs.forEach((p) => p.lines.forEach((l) => { const b = BENCH[l.work].lines.find((x) => x.project === p.id && x.work === l.work); if (b && b.idx > 1.25 && !l.dup) add('S1', 'Стройка', 'high', `Цена «${WRK[l.work].name}» выше рынка: индекс ${b.idx.toFixed(2).replace('.', ',')}`, p.object, b.over, `#/benchmark/${l.work}`, pm(p), 'S1' + p.id + l.work); }));
+    prs.forEach((p) => p.lines.forEach((l) => { const a = OBJ[p.object].area; if (WRK[l.work].unit === 'м²' && l.qty > a * 1.3 && !l.dup) add('S2', 'Стройка', 'high', `Объём «${WRK[l.work].name}» ${fmt(l.qty)} м² при площади локации ${fmt(a)} м²`, p.object, (l.qty - a) * l.price, `#/object/${p.object}/projects`, pm(p), 'S2' + p.id + l.work); }));
+    prs.forEach((p) => p.lines.filter((l) => l.dup).forEach((l) => add('S3', 'Стройка', 'crit', `Двойное выставление: «${WRK[l.work].name}» повторно в акте №${l.act} (${p.id})`, p.object, l.sum, `#/object/${p.object}/projects`, pm(p), 'S3' + p.id + l.work)));
+    D.layouts.filter((l) => os.has(l.object)).forEach((l) => { const pr = PRJ[l.changes[0]?.project]; if (!pr) return; const ch = sum(l.changes.filter((c) => c.status === 'Утверждено' && c.project === pr.id), 'cost'); if (ch > pr.budget * 0.15) add('S5', 'Стройка', 'high', `Изменения проекта ${pct0(ch / pr.budget)} от бюджета ${pr.id}`, l.object, ch - pr.budget * 0.15, `#/object/${l.object}/arch`, pr.manager, 'S5' + pr.id); });
+    const byMgr = {}; prs.forEach((p) => { const m = (byMgr[p.manager] = byMgr[p.manager] || { tot: 0, n: 0, by: {} }); m.tot += p.budget; m.n++; m.by[p.contractor] = (m.by[p.contractor] || 0) + p.budget; });
+    Object.entries(byMgr).forEach(([m, v]) => Object.entries(v.by).forEach(([c, s]) => { if (v.n >= 3 && s / v.tot > 0.4) add('S6', 'Подряд', 'mid', `${PPL[m].name} отдаёт ${pct0(s / v.tot)} объёма подрядчику ${CTR_(c).name}`, null, 0, '#/projects', m, 'S6' + m + c); }));
+    D.contractors.forEach((c) => { const tot = sum(prs.filter((p) => p.contractor === c.id), 'budget'); if (D.TODAY.slice(0, 4) - c.founded <= 1 && tot > 30e6) add('S7', 'Подряд', 'high', `${c.name}: компании ${D.TODAY.slice(0, 4) - c.founded || '< 1'} г., договоров на ${mln(tot)}`, null, tot, '#/projects', null, 'S7' + c.id); });
+    D.contractors.forEach((c) => { const pp = D.people.find((p) => p.phone && p.phone === c.phone); if (pp) add('S8', 'Подряд', 'crit', `${c.name}: телефон подрядчика совпадает с телефоном сотрудника ${pp.name}`, null, sum(prs.filter((p) => p.contractor === c.id), 'budget'), `#/person/${pp.id}`, null, 'S8' + c.id); });
+    prs.forEach((p) => { const accepted = p.costForecast * p.progress / 100; if (p.paid > accepted * 1.05) add('S9', 'Стройка', 'crit', `${p.id}: оплачено ${mln(p.paid)} при принятом объёме ${mln(accepted)}`, p.object, p.paid - accepted, `#/object/${p.object}/projects`, pm(p), 'S9' + p.id); });
+    D.acceptances.filter((a) => os.has(PRJ[a.project].object)).forEach((a) => { const p = PRJ[a.project]; if (a.inspector === p.manager) add('S10', 'Стройка', 'crit', `Приёмка «${a.stage}» ${p.id} подписана РП, а не технадзором`, p.object, 0, `#/object/${p.object}/projects`, p.manager, 'S10' + a.id); });
+    D.defects.filter((d) => d.photoOf && os.has(d.object)).forEach((d) => add('S12', 'Стройка', 'crit', `Фото замечания ${d.id} совпадает с фото ${d.photoOf} на другой локации (одинаковый хеш)`, d.object, 0, `#/object/${d.object}/projects`, PRJ[d.project].supervisor, 'S12' + d.id));
+    // мастер-данные
+    (D.mdLog || []).filter((m) => m.field === 'Банковский счёт' && !m.approvedBy).forEach((m) => add('MD', 'Мастер-данные', 'crit', `Смена банковского счёта ${CTR_(m.ref).name} без второго подтверждения (${m.id})`, null, sum(prs.filter((p) => p.contractor === m.ref && !p.done), (p) => p.costForecast - p.paid), '#/audit', m.who, 'MD' + m.id));
+    // аренда
+    const pool = D.objects.filter((o) => !o.real), bizMed = {}; D.businesses.forEach((b) => (bizMed[b.id] = median(pool.filter((o) => o.business === b.id).map((o) => o.lease.rate / REG[o.region].k))));
+    fObjects().forEach((o) => {
+      const k = REG[o.region].k, idxR = o.lease.rate / k / bizMed[o.business];
+      if (idxR > 1.2) add('A1', 'Аренда', 'high', `Ставка ${fmt(o.lease.rate)} ₽/м²/мес выше медианы формата на ${pct0(idxR - 1)}`, o.id, (o.lease.rate - bizMed[o.business] * k * 1.2) * o.area * 12, `#/object/${o.id}/lease`, o.leaseManager, 'A1' + o.id);
+      if (o.status === 'В эксплуатации' && leaseDaysLeft(o) < 0) add('A5', 'Аренда', 'crit', `Договор истёк ${dt(o.lease.end)}, локация работает и платит`, o.id, o.lease.rate * o.area, `#/object/${o.id}/units`, o.leaseManager, 'A5' + o.id);
+      if (o.status === 'В эксплуатации' && !D.tickets.some((t) => t.object === o.id) && !D.projects.some((p) => p.object === o.id && !p.done)) add('A6', 'Аренда', 'mid', 'Нет тикетов и проектов за 90 дней: проверить, используется ли площадь', o.id, o.lease.rate * o.area * 12, `#/object/${o.id}`, o.leaseManager, 'A6' + o.id);
+      (o.units || []).filter((u) => /опцион/i.test(u.kind || '') && u.planEnd && days(D.TODAY, u.planEnd) < 120).forEach((u) => add('A7', 'Аренда', 'mid', `Опцион +${fmt(u.area)} м² истекает ${dt(u.planEnd)}, решения нет`, o.id, 0, `#/object/${o.id}/units`, o.leaseManager, 'A7' + o.id));
+    });
+    // эксплуатация и ОС
+    D.assets.filter((a) => os.has(a.object)).forEach((a) => {
+      if (warrantyPaid(a) > 0) add('E1', 'Эксплуатация', 'high', `${a.id} ${a.name}: оплачен ремонт в гарантийный период`, a.object, warrantyPaid(a), assetHref(a), a.mol, 'E1' + a.id);
+      if (a.status !== WIP && repCost(a) > a.residual * 0.5 && repCost(a) > 0) add('E2', 'Эксплуатация', 'mid', `${a.id} ${a.name}: ремонт ${mln(repCost(a))} при остаточной ${mln(a.residual)}`, a.object, repCost(a) - a.residual * 0.5, assetHref(a), a.mol, 'E2' + a.id);
+      if (isStuck(a)) add('E6', 'ОС', 'high', `${a.name}: проект завершён, в ОС не введено (сч. 08)`, a.object, a.cost, assetHref(a), a.mol, 'E6' + a.id);
+      if (a.status === 'К списанию' && wear(a) < 0.5) add('E7', 'ОС', 'high', `${a.id} ${a.name}: списание при износе ${pct0(wear(a))}`, a.object, a.residual, assetHref(a), a.mol, 'E7' + a.id);
+    });
+    D.tickets.filter((t) => os.has(t.object) && t.resolved && t.confirmed === false).forEach((t) => add('E4', 'Эксплуатация', 'mid', `${t.key} закрыт исполнителем без подтверждения площадки`, t.object, t.cost, `#/object/${t.object}/ops`, t.assignee, 'E4' + t.key));
+    const byAsset = {}; D.tickets.filter((t) => t.asset && os.has(t.object)).forEach((t) => (byAsset[t.asset] = byAsset[t.asset] || []).push(t));
+    Object.values(byAsset).forEach((ts) => { ts.sort((a, b) => a.created.localeCompare(b.created)); for (let i = 1; i < ts.length; i++) if (ts[i - 1].resolved && days(ts[i - 1].resolved, ts[i].created) >= 0 && days(ts[i - 1].resolved, ts[i].created) < 7) add('E5', 'Эксплуатация', 'mid', `${ts[i].key}: повтор по ${ts[i].asset} через ${days(ts[i - 1].resolved, ts[i].created)} дн после закрытия ${ts[i - 1].key}`, ts[i].object, ts[i].cost, assetHref(ASSET[ts[i].asset]), ts[i].assignee, 'E5' + ts[i].key); });
+    // ИТ
+    D.itDevices.filter((d) => os.has(d.object) && (d.status === 'Неисправно' || d.status === 'Не найдено') && d.sub > 0).forEach((d) => add('I1', 'ИТ', 'mid', `${d.type} ${d.id}: ${d.status.toLowerCase()}, подписка продолжает списываться`, d.object, d.sub * 12, `#/object/${d.object}/it`, d.owner, 'I1' + d.id));
+    // однотипные мелкие сигналы — одной строкой на локацию (так с ними и работают)
+    const GROUP = { E1: 'ремонтов в гарантию оплачено', E2: 'единиц ремонтируются дороже половины остаточной', E4: 'тикетов закрыто без подтверждения площадки', E5: 'повторных тикетов в течение 7 дней', I1: 'устройств не работают, а подписка списывается', S1: 'видов работ дороже рынка' };
+    const grouped = [], buckets = {};
+    out.forEach((x) => { if (!GROUP[x.code] || !x.obj) { grouped.push(x); return; } const k = x.code + x.obj; (buckets[k] = buckets[k] || []).push(x); });
+    Object.values(buckets).forEach((xs) => { const f = xs[0]; grouped.push(xs.length === 1 ? f : { ...f, title: `${xs.length} ${GROUP[f.code]}`, amount: sum(xs, 'amount'), href: f.code === 'S1' ? `#/object/${f.obj}/projects` : f.code === 'I1' ? `#/object/${f.obj}/it` : f.code[0] === 'E' && f.code !== 'E4' && f.code !== 'E5' ? `#/object/${f.obj}/assets` : `#/object/${f.obj}/ops`, key: f.code + f.obj, items: xs.length }); });
+    out.length = 0; grouped.forEach((x) => out.push(x));
+    // статусы разбора (демо, детерминированно: чем старше сигнал, тем вероятнее он разобран)
+    out.forEach((s) => { const r = hash(s.key)(); const r2 = hash(s.key + 'd')(); const age = Math.floor(r2 * 40); s.detected = new Date(new Date(D.TODAY) - age * 864e5).toISOString().slice(0, 10); s.status = age > 14 ? (r < 0.12 ? 0 : r < 0.25 ? 1 : r < 0.85 ? 2 : 3) : (r < 0.55 ? 0 : r < 0.85 ? 1 : r < 0.95 ? 2 : 3); const ov = EX_OVERRIDE()[s.key]; if (ov != null) s.status = ov; s.due = new Date(new Date(s.detected).getTime() + 14 * 864e5).toISOString().slice(0, 10); s.overdue = s.status < 2 && s.due < D.TODAY; });
+    return out;
+  }
+
+  const CONTROLS = [
+    ['К1', 'Три подтверждения: договор — акт — приёмка — оплата', 'Стройка', 'автоматический, превентивный', ['S9', 'S10']],
+    ['К2', 'Цена работ в пределах рынка', 'Стройка', 'автоматический, детективный', ['S1']],
+    ['К3', 'Объёмы КС-2 не больше физически возможных, без повторов', 'Стройка', 'автоматический, детективный', ['S2', 'S3']],
+    ['К4', 'Лимит изменений проекта (15%)', 'Стройка', 'превентивный, согласование комитетом', ['S5']],
+    ['К5', 'Проверка подрядчика: возраст, аффилированность, концентрация', 'Подряд', 'детективный', ['S6', 'S7', 'S8']],
+    ['К6', 'Доказательства приёмки: фото с объекта, серверное время, хеш', 'Стройка', 'превентивный', ['S12']],
+    ['К7', 'Второй ключ на изменение реквизитов подрядчика', 'Мастер-данные', 'превентивный', ['MD']],
+    ['К8', 'Ставки, сроки и использование арендованных площадей', 'Аренда', 'детективный', ['A1', 'A5', 'A6', 'A7']],
+    ['К9', 'Гарантия и выбор «ремонт или замена»', 'Эксплуатация', 'превентивный', ['E1', 'E2', 'E5']],
+    ['К10', 'Закрытие тикета подтверждает площадка', 'Эксплуатация', 'превентивный', ['E4']],
+    ['К11', 'Своевременный ввод в ОС и обоснованное списание', 'ОС', 'детективный', ['E6', 'E7']],
+    ['К12', 'Оплата только работающих ИТ-устройств', 'ИТ', 'детективный', ['I1']],
+    ['К13', 'Ежемесячная сверка реестра аренды с 1С', 'Аренда', 'сверка', null],
+    ['К14', 'Квартальный пересмотр доступов', 'ИТ-контроль', 'ручной, ежеквартально', []],
+  ];
+
+  function benford(values) {
+    const cnt = Array(10).fill(0); let n = 0;
+    values.filter((v) => v >= 10).forEach((v) => { const d = +String(Math.floor(v))[0]; cnt[d]++; n++; });
+    return [1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => ({ d, obs: n ? cnt[d] / n : 0, exp: Math.log10(1 + 1 / d) })).concat([{ n }]);
+  }
+
+  V.audit = (proc = '') => {
+    const sig = auditSignals();
+    const open = sig.filter((s) => s.status < 2);
+    const shown = proc ? sig.filter((s) => s.proc === proc) : sig;
+    const procs = [...new Set(sig.map((s) => s.proc))];
+    const ctrl = CONTROLS.map(([id, name, p, type, codes]) => {
+      if (codes === null) return { id, name, p, type, st: ['Источник не подключён', 'neutral'], n: 0, amt: 0, note: 'нужна ежемесячная выгрузка 1С' };
+      const ss = sig.filter((s) => codes.includes(s.code)), od = ss.filter((s) => s.overdue);
+      const st = !codes.length ? ['Эффективен', 'good'] : od.some((s) => s.sev === 'crit') ? ['Не эффективен', 'bad'] : ss.length && od.length / ss.length > 0.25 ? ['Есть недостатки', 'warn'] : ['Эффективен', 'good'];
+      return { id, name, p, type, st, n: ss.length, amt: sum(ss, 'amount'), note: !codes.length ? 'последний пересмотр ' + dt(new Date(new Date(D.TODAY) - 41 * 864e5).toISOString().slice(0, 10)) : '' };
+    });
+    const bf = benford([...D.projects.flatMap((p) => p.lines.map((l) => l.sum)), ...D.tickets.map((t) => t.cost).filter((x) => x > 0), ...D.assets.map((a) => a.cost)]);
+    const bfN = bf.pop().n, mad = sum(bf, (x) => Math.abs(x.obs - x.exp)) / 9;
+    const W = 560, H = 200, bw = (W - 40) / 9;
+    const bfSvg = `<svg viewBox="0 0 ${W} ${H + 24}" width="100%">${bf.map((x, i) => { const hO = x.obs / 0.35 * H, hE = x.exp / 0.35 * H, X0 = 30 + i * bw; return `<rect x="${X0 + 6}" y="${H - hO}" width="${bw - 12}" height="${hO}" fill="#3b5bdb" opacity=".75"><title>${x.d}: факт ${pct0(x.obs)}, ожидание ${pct0(x.exp)}</title></rect><line x1="${X0 + 2}" x2="${X0 + bw - 2}" y1="${H - hE}" y2="${H - hE}" stroke="#e67700" stroke-width="3"/><text x="${X0 + bw / 2}" y="${H + 16}" font-size="12" text-anchor="middle" fill="#6b7385">${x.d}</text>`; }).join('')}<line x1="30" x2="${W - 10}" y1="${H}" y2="${H}" stroke="#ccd"/></svg>`;
+    const recon = [
+      ['Реестр аренды ↔ начисления 1С', 'ежемесячно', null, 'источник не подключён: нужна выгрузка 1С'],
+      ['Реестр ОС ↔ сч. 01 и 08', 'ежемесячно', sum(D.assets.filter(isStuck), 'cost'), `${D.assets.filter(isStuck).length} позиций на сч. 08 по завершённым проектам`],
+      ['Оплаты ↔ принятые КС-2 и бюджет', 'ежемесячно', sum(sig.filter((s) => s.code === 'S9'), 'amount'), `${sig.filter((s) => s.code === 'S9').length} проектов оплачено сверх принятого`],
+      ['Устройства в оплате ↔ мониторинг', 'ежемесячно', sum(sig.filter((s) => s.code === 'I1'), 'amount'), `${sig.filter((s) => s.code === 'I1').length} устройств офлайн с подпиской`],
+    ];
+    return `<h1>Контроль и аудит</h1><div class="sub">Контроли и сигналы по всем данным, а не по выборке. Доступ: ${ACCESS.audit.map((r) => ROLES[r]).join(', ')} · сейчас вы: <b>${ROLES[state.role]}</b></div>
+    <div class="note">Демо: в данные специально заложены схемы обмана (приписки объёмов, двойное выставление, переплаты, приёмка «своими», аффилированный подрядчик, одно фото в разных актах, смена реквизитов без второго ключа). Сигналы ниже нашли их правилами из документа «Контроль и аудит».</div>
+    <div class="kpis">
+      ${kpi('Сигналов', sig.length, `${open.length} не разобрано`)}
+      ${kpi('Сумма под риском', mln(sum(sig, 'amount')), `по неразобранным ${mln(sum(open, 'amount'))}`)}
+      ${kpi('Критичных открыто', `<span class="${open.some((s) => s.sev === 'crit') ? 'bad' : 'good'}">${open.filter((s) => s.sev === 'crit').length}</span>`)}
+      ${kpi('Просрочен разбор', `<span class="${sig.some((s) => s.overdue) ? 'bad' : ''}">${sig.filter((s) => s.overdue).length}</span>`, 'срок разбора — 14 дней')}
+      ${kpi('Подтверждено нарушений', sig.filter((s) => s.status === 3).length, mln(sum(sig.filter((s) => s.status === 3), 'amount')))}
+      ${kpi('Контроли эффективны', `${ctrl.filter((c) => c.st[0] === 'Эффективен').length} из ${ctrl.length}`, `${ctrl.filter((c) => c.st[0] === 'Не эффективен').length} не эффективны · ${ctrl.filter((c) => c.st[0] === 'Источник не подключён').length} без источника`)}
+    </div>
+    <div class="card" style="margin-bottom:14px"><h2>Панель контролей</h2><div class="muted small" style="margin-bottom:8px">Контроль, который находит отклонения, работает. Эффективность оценивается по тому, разбираются ли найденные исключения в срок (14 дней): критичное с просрочкой — контроль не эффективен, более 25% просроченных — есть недостатки.</div>${tbl('ctrl', [
+      { h: 'ID', v: (c) => +c.id.slice(1), f: (c) => `<span class="muted">${c.id}</span>` },
+      { h: 'Контроль', v: (c) => c.name, f: (c) => `<b>${esc(c.name)}</b>${c.note ? `<div class="muted small">${esc(c.note)}</div>` : ''}` },
+      { h: 'Процесс', v: (c) => c.p, f: (c) => esc(c.p) },
+      { h: 'Тип', f: (c) => `<span class="small">${esc(c.type)}</span>` },
+      { h: 'Статус', v: (c) => c.st[0], f: (c) => pill(c.st[0], c.st[1]) },
+      { h: 'Сигналов', num: 1, v: (c) => c.n, f: (c) => c.n || '—' },
+      { h: 'Сумма под риском', num: 1, v: (c) => c.amt, f: (c) => (c.amt ? mln(c.amt) : '—') },
+    ], ctrl)}</div>
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card"><h2>Сигналы по процессам</h2>${hbar(procs.map((p) => ({ label: `${p} · ${mln(sum(sig.filter((s) => s.proc === p), 'amount'))}`, value: sig.filter((s) => s.proc === p).length, color: sig.some((s) => s.proc === p && s.sev === 'crit') ? '#c92a2a' : '#e67700' })).sort((a, b) => b.value - a.value))}</div>
+      <div class="card"><h2>Закон Бенфорда: первые цифры сумм</h2>${bfSvg}<div class="legend"><span><i style="background:#3b5bdb"></i>факт (${fmt(bfN)} сумм: КС-2, ремонты, ОС)</span><span><i style="background:#e67700"></i>ожидание по Бенфорду</span><span>среднее отклонение ${(mad * 100).toFixed(1).replace('.', ',')} п.п. — ${mad < 0.015 ? 'в норме' : 'есть аномалии, проверить'}</span></div></div>
+    </div>
+    <div class="card" style="margin-bottom:14px"><h2 style="display:flex;justify-content:space-between;align-items:center">Реестр исключений <button class="btn" data-excsv="1">Выгрузить для аудита (CSV)</button></h2>${canJudge() ? '<div class="muted small" style="margin-bottom:8px">Вы можете менять статус разбора. Изменения пишутся в журнал (в демо — хранятся в этом браузере).</div>' : '<div class="muted small" style="margin-bottom:8px">Статус разбора меняют роли «Аудитор» и «Контроль и риски».</div>'}
+      <div class="tabs"><a class="btn ${!proc ? 'on' : ''}" href="#/audit" style="text-decoration:none;${!proc ? 'color:#fff' : 'color:inherit'}">Все (${sig.length})</a>${procs.map((p) => `<a class="btn ${p === proc ? 'on' : ''}" href="#/audit/${encodeURIComponent(p)}" style="text-decoration:none;${p === proc ? 'color:#fff' : 'color:inherit'}">${esc(p)} (${sig.filter((s) => s.proc === p).length})</a>`).join('')}</div>
+      ${tbl('exc', [
+        { h: 'Код', v: (s) => s.code, f: (s) => `<b>${s.code}</b>` },
+        { h: 'Сигнал', v: (s) => s.title, f: (s) => esc(s.title) },
+        { h: 'Локация', v: (s) => (s.obj ? OBJ[s.obj].name : ''), f: (s) => (s.obj ? objLink(s.obj) : '<span class="muted">—</span>') },
+        { h: 'Критичность', v: (s) => ({ crit: 0, high: 1, mid: 2 }[s.sev]), f: (s) => pill(SEV[s.sev][0], SEV[s.sev][1]) },
+        { h: 'Сумма под риском', num: 1, v: (s) => s.amount, f: (s) => (s.amount ? mln(s.amount) : '—') },
+        { h: 'Владелец разбора', v: (s) => PPL[s.owner]?.name || '', f: (s) => (s.owner ? person(s.owner) : '<span class="muted">контроль</span>') },
+        { h: 'Обнаружен', v: (s) => s.detected, f: (s) => dt(s.detected) },
+        { h: 'Срок', v: (s) => s.due, f: (s) => `<span class="${s.overdue ? 'bad' : ''}">${dt(s.due)}${s.overdue ? ' · просрочен' : ''}</span>` },
+        { h: 'Статус', v: (s) => s.status, f: (s) => (canJudge() ? `<select data-exkey="${esc(s.key)}">${EX_STATUS.map(([n], i) => `<option value="${i}" ${i === s.status ? 'selected' : ''}>${n}</option>`).join('')}</select>` : pill(EX_STATUS[s.status][0], EX_STATUS[s.status][1])) },
+      ], [...shown].sort((a, b) => ({ crit: 0, high: 1, mid: 2 }[a.sev] - { crit: 0, high: 1, mid: 2 }[b.sev]) || b.amount - a.amount), { href: (s) => s.href })}</div>
+    <div class="grid g2">
+      <div class="card"><h2>Сверки</h2><table><thead><tr><th>Сверка</th><th>Частота</th><th class="num">Расхождение</th></tr></thead><tbody>${recon.map(([n, f, v, d]) => `<tr><td><b>${n}</b><div class="muted small">${d}</div></td><td class="small">${f}</td><td class="num">${v == null ? pill('нет данных', 'neutral') : v ? `<span class="bad">${mln(v)}</span>` : '<span class="good">сходится</span>'}</td></tr>`).join('')}</tbody></table></div>
+      <div class="card"><h2>Журнал изменений мастер-данных</h2>${tbl('md', [
+        { h: 'Дата', v: (m) => m.date, f: (m) => dt(m.date) },
+        { h: 'Подрядчик', v: (m) => CTR_(m.ref).name, f: (m) => esc(CTR_(m.ref).name) },
+        { h: 'Поле', v: (m) => m.field, f: (m) => esc(m.field) },
+        { h: 'Изменил', v: (m) => PPL[m.who].name, f: (m) => person(m.who) },
+        { h: 'Второй ключ', v: (m) => (m.approvedBy ? 1 : 0), f: (m) => (m.approvedBy ? person(m.approvedBy) : pill('нет подтверждения', 'bad')) },
+      ], [...(D.mdLog || [])].sort((a, b) => b.date.localeCompare(a.date)))}</div>
+    </div>`;
+  };
+
   V.about = () => `<h1>О проекте</h1><div class="sub">Прототип для обсуждения с командой · все данные синтетические</div>
     <div class="note">Задача: собрать в одном окне аренду, стройку, эксплуатацию и запуск по всем бизнесам. Сейчас бухгалтерия живёт в 1С, операционные финансы — в финмодели, эксплуатация — в тикетах Трекера, стройка — в Excel и почте.</div>
     <div class="grid g2" style="margin-bottom:14px">
@@ -1940,8 +2133,11 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   if (MIXED) document.querySelectorAll('#nav a').forEach((a) => { const r = a.dataset.r; if (r === 'about') return; const real = r === 'objects' || r === 'lease'; a.insertAdjacentHTML('beforeend', ` <span class="navtag ${real ? 'real' : ''}">${real ? 'реальные' : 'демо'}</span>`); });
   function render() {
     let [, route = 'overview', param, sub] = location.hash.split('/');
-    const fn = V[route] || V.overview;
+    const fn = !canSee(route) ? () => `<h1>Нет доступа</h1><div class="card" style="max-width:640px"><p style="margin-top:0">Раздел доступен ролям: <b>${(ACCESS[route] || []).map((r) => ROLES[r]).join(', ')}</b>.</p><p class="muted small" style="margin-bottom:0">Ваша роль: ${ROLES[state.role]}. Доступ выдаётся через заявку на роль; все обращения к разделу пишутся в журнал.</p></div>` : V[route] || V.overview;
+    document.querySelectorAll('#nav a').forEach((a) => { a.style.display = canSee(a.dataset.r) ? '' : 'none'; });
     renderFilters();
+    const rb = document.getElementById('rolebar'); if (rb) rb.innerHTML = READONLY_ROLES.includes(state.role) ? '<b>Режим аудитора:</b> полный просмотр, включая деньги и журнал изменений · данные только для чтения · каждое действие пишется в журнал' : '';
+    if (rb) rb.style.display = rb.innerHTML ? '' : 'none';
     $('#view').innerHTML = fn(param && decodeURIComponent(param), sub && decodeURIComponent(sub));
     const navR = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', it: 'it' }[route] || route;
     document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.r === navR));
@@ -1950,6 +2146,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   document.addEventListener('change', (e) => {
     const t = e.target;
     if (t.dataset.filter !== undefined) { state[t.dataset.filter] = t.value; render(); }
+    if (t.dataset.exkey) { const m = EX_OVERRIDE(); m[t.dataset.exkey] = +t.value; try { localStorage.setItem('rehub.exstatus', JSON.stringify(m)); } catch (e) {} render(); return; }
+    if (t.dataset.role !== undefined) { state.role = t.value; try { localStorage.setItem('rehub.role', t.value); } catch (e) {} render(); }
     if (t.dataset.cmp) { t.checked ? state.compare.add(t.dataset.cmp) : state.compare.delete(t.dataset.cmp); render(); }
   });
   document.addEventListener('input', (e) => { if (e.target.id === 'q') { state.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); } });
@@ -1958,7 +2156,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     if (t.closest('[data-close]') || t.id === 'modal') { $('#modal').classList.add('hidden'); return; }
     const th = t.closest('[data-sort]');
     if (th) { const [id, col] = th.dataset.sort.split(':'); const cur = state.sort[id]; state.sort[id] = { col: +col, dir: cur && cur.col === +col ? -cur.dir : -1 }; render(); return; }
-    if (t.matches('input[type=checkbox]')) return;
+    if (t.matches('input[type=checkbox]') || t.closest('select')) return;
     const def = t.closest('[data-defect]'); if (def) { openDefect(def.dataset.defect); return; }
     if (t.dataset.photo) { openPhoto(t.src); return; }
     const reg = t.closest('[data-region]'); if (reg) { e.preventDefault(); state.region = reg.dataset.region; render(); return; }
@@ -1966,6 +2164,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const ds = t.closest('[data-defstatus]'); if (ds) { state.defStatus = ds.dataset.defstatus; render(); return; }
     const af = t.closest('[data-afilter]'); if (af) { state.assetFilter = af.dataset.afilter; render(); return; }
     const itd = t.closest('[data-itdev]'); if (itd) { state.itDev = itd.dataset.itdev; render(); return; }
+    if (t.dataset.excsv) { const rows = auditSignals(); const q = (x) => '"' + String(x ?? '').replace(/"/g, '""') + '"'; const csv = '\ufeff' + ['Код;Процесс;Сигнал;Локация;Критичность;Сумма под риском, ₽;Владелец;Обнаружен;Срок;Статус', ...rows.map((s) => [s.code, s.proc, s.title, s.obj ? OBJ[s.obj].name : '', SEV[s.sev][0], s.amount, PPL[s.owner]?.name || '', s.detected, s.due, EX_STATUS[s.status][0]].map(q).join(';'))].join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = 'реестр_исключений_' + D.TODAY + '.csv'; a.click(); return; }
     const tc = t.closest('[data-tcat]'); if (tc) { state.ticketCat = tc.dataset.tcat; render(); return; }
     if (t.id === 'cmp') { location.hash = '#/compare/' + [...state.compare].join(','); return; }
     if (t.id === 'cmpclear') { state.compare.clear(); render(); return; }
