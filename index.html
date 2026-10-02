@@ -94,6 +94,10 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .kpi .v { font-size: 18px; }
   .modal { padding: 10px; } .modal .imgs { grid-template-columns: 1fr; }
 }
+
+.fb-btn { position: fixed; right: 20px; bottom: 20px; z-index: 40; background: var(--accent); color: #fff !important; padding: 10px 16px; border-radius: 999px; box-shadow: 0 6px 20px rgba(59,91,219,.35); font-weight: 600; text-decoration: none !important; }
+.fb-btn:hover { background: #2f4bc4; }
+@media (max-width: 900px) { .fb-btn { right: 12px; bottom: 12px; padding: 8px 12px; font-size: 13px; } }
 </style>
 </head>
 <body>
@@ -123,10 +127,11 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     </div>
   </aside>
   <main>
-    <div style="background:#fff4e0;color:#8a4b00;font-size:12px;padding:6px 24px;border-bottom:1px solid #f5d9a8">Прототип для обсуждения · все данные синтетические · <a href="#/about">о проекте и вопросы к команде</a></div>
+    <div style="background:#fff4e0;color:#8a4b00;font-size:12px;padding:6px 24px;border-bottom:1px solid #f5d9a8">Прототип для обсуждения · все данные синтетические · <a href="#/about">о проекте и вопросы к команде</a> · <a href="https://forms.yandex-team.ru/ext/surveys/13903108/" target="_blank" rel="noopener"><b>предложить, что добавить</b></a></div>
     <header class="filters" id="filters"></header>
     <section id="view"></section>
   </main>
+  <a class="fb-btn" href="https://forms.yandex-team.ru/ext/surveys/13903108/" target="_blank" rel="noopener" title="Форма для сотрудников, нужен вход в корпоративный аккаунт">💡 Предложить, что добавить</a>
   <div id="modal" class="modal hidden"></div>
   <script>
 // Демо-данные. Детерминированный генератор: одинаковые цифры при каждом открытии.
@@ -1364,7 +1369,9 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
         <tr><td><b>3. Бенчмарк</b></td><td class="muted">4–6 нед</td><td>маппинг КС-2 на классификатор, индексы цен, разбор выбросов</td></tr>
         <tr><td><b>4. Масштаб</b></td><td class="muted">далее</td><td>все бизнесы, прогнозы сроков и денег, рейтинг подрядчиков в тендерах</td></tr>
       </tbody></table></div>
-      <div class="card"><h2>Вопросы к команде</h2><ol style="padding-left:18px;margin:0">
+      <div class="card"><h2>Вопросы к команде</h2>
+        <div class="note" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px"><b>Что вы хотите видеть в системе?</b><br><span class="small">Одно предложение — одна отправка, форму можно заполнять сколько угодно раз. Все ответы складываются в общий список.</span></div><a class="btn primary" href="https://forms.yandex-team.ru/ext/surveys/13903108/" target="_blank" rel="noopener" style="text-decoration:none;color:#fff">Предложить →</a></div>
+        <ol style="padding-left:18px;margin:0">
         <li>Каких экранов или метрик не хватает для вашей ежедневной работы?</li>
         <li>Кто станет владельцем классификатора работ: сметчики, cost-контроль или закупки?</li>
         <li>Насколько детальны акты КС-2 в 1С: есть ли разбивка по видам работ?</li>
