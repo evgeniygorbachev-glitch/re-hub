@@ -706,6 +706,17 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
         contract: `ПДА-${s0.getFullYear()}/${int(1, 99)}`, type: 'ПДА', signed: iso(s0), opsStart: null, opsEnd: null, planEnd: iso(dl), area: Math.round(o.area * between(0.15, 0.45)), rate: Math.round(o.lease.rate * between(0.95, 1.1)), rentYear: 0 });
     }
   }
+  // статьи затрат по договорам: ФФЦ и СЦ одной локации — разные статьи
+  for (const o of objects) {
+    const c = o.card, k = c.contract;
+    o.units.forEach((u, i) => {
+      const st = c.subtype;
+      u.cc = o.business !== 'logistics' ? st : st === 'ФФЦ' ? 'ФФЦ' : st === 'СЦ' || st === 'Кросс-док' ? 'СЦ' : i === 0 ? 'ФФЦ/СЦ' : pick(['ФФЦ', 'СЦ']);
+      if (u.cc === 'ФФЦ/СЦ') { const sh = between(0.45, 0.75); u.ff = Math.round(u.area * sh); u.sc = u.area - u.ff; }
+      u.opexYear = Math.round((k.opexM2 || 0) * (u.area || 0));
+      u.varYear = Math.round(((k.variable.utilities || 0) + (k.variable.mop || 0)) * 12 * (u.area || 0) / o.area);
+    });
+  }
   function PPL_NAME(id) { const p = people.find((x) => x.id === id); return p ? p.name : null; }
 
   window.DB = { TODAY: iso(TODAY), businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets, itChannels, itDevices, itLaunch, itTickets };
@@ -1015,7 +1026,35 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   }
   const riskList = (rs) => (rs.length ? rs.map(([lv, t]) => `<div style="padding:6px 0;border-bottom:1px solid #f0f1f4"><span class="${lv}">●</span> ${esc(t)}</div>`).join('') : '<div class="good">Рисков не найдено</div>');
   const HAS = { projects: D.projects.length > 0, arch: D.layouts.length > 0, assets: D.assets.length > 0, it: D.itChannels.length > 0, ops: D.tickets.length > 0 };
-  const OBJ_TABS_ALL = [['summary', 'Обзор'], ['units', 'Договор и допсоглашения'], ['passport', 'Паспорт и техника'], ['areas', 'Площади'], ['lease', 'Аренда и договор'], ['resp', 'Ответственность'], ['checks', 'Проверки и риски'], ['contacts', 'Контакты'], ['projects', 'Проекты и стройка'], ['arch', 'Архитектура'], ['assets', 'Оборудование и ОС'], ['it', 'ИТ'], ['ops', 'Эксплуатация']];
+  // Распределение затрат локации по статьям (ФФЦ, СЦ, …):
+  // строка с одной статьёй — напрямую; «ФФЦ/СЦ» — по площадям ФФ и СЦ; «Общее» (АБК, ЗУ) — по площадям статей
+  function costSplit(o) {
+    const us = (o.units || []).filter((u) => !/опцион/i.test(u.kind || '') && (u.leaseStatus === 'В аренде' || !(o.units || []).some((x) => x.leaseStatus === 'В аренде')));
+    const acc = {}, notes = new Set();
+    const add = (cc, k, v, how) => { const r = (acc[cc] = acc[cc] || { cc, area: 0, rent: 0, opex: 0, vari: 0, shared: 0, how: new Set() }); r[k] += v; r.how.add(how); };
+    const shared = [];
+    for (const u of us) {
+      const cost = { area: u.area || 0, rent: u.rentYear || 0, opex: u.opexYear || 0, vari: u.varYear || 0 };
+      const cc = u.cc || o.card.subtype || 'Общее';
+      if (cc === 'Общее') { shared.push(u); continue; }
+      if (cc === 'ФФЦ/СЦ') {
+        const ff = u.ff || 0, sc = u.sc || 0; const k = ff + sc ? ff / (ff + sc) : 0.5;
+        if (!(ff + sc)) notes.add('У договора «ФФЦ/СЦ» не заполнены площади ФФ и СЦ — разделено 50/50');
+        for (const [c, sh] of [['ФФЦ', k], ['СЦ', 1 - k]]) Object.entries(cost).forEach(([kk, v]) => add(c, kk, v * sh, 'по площадям ФФ/СЦ'));
+      } else Object.entries(cost).forEach(([kk, v]) => add(cc, kk, v, 'напрямую'));
+    }
+    const direct = Object.values(acc), dArea = sum(direct, 'area');
+    for (const u of shared) {
+      const tot = (u.rentYear || 0) + (u.opexYear || 0) + (u.varYear || 0);
+      if (!direct.length) { add('Общее', 'shared', tot, 'нет статей'); acc['Общее'].area += u.area || 0; continue; }
+      direct.forEach((r) => { r.shared += tot * (dArea ? r.area / dArea : 1 / direct.length); r.how.add('+ общие площади по доле'); });
+    }
+    const rows = Object.values(acc).map((r) => ({ ...r, how: [...r.how].join(', '), total: r.rent + r.opex + r.vari + r.shared }));
+    const tot = sum(rows, 'total');
+    rows.forEach((r) => { r.share = tot ? r.total / tot : 0; r.m2 = r.area ? r.total / r.area : 0; });
+    return { rows: rows.sort((a, b) => b.total - a.total), total: tot, shared, notes: [...notes] };
+  }
+  const OBJ_TABS_ALL = [['summary', 'Обзор'], ['units', 'Договор и допсоглашения'], ['passport', 'Паспорт и техника'], ['areas', 'Площади'], ['lease', 'Аренда и договор'], ['costs', 'Затраты по статьям'], ['resp', 'Ответственность'], ['checks', 'Проверки и риски'], ['contacts', 'Контакты'], ['projects', 'Проекты и стройка'], ['arch', 'Архитектура'], ['assets', 'Оборудование и ОС'], ['it', 'ИТ'], ['ops', 'Эксплуатация']];
   const OBJ_TABS = OBJ_TABS_ALL;
   const DEMO_URL = 'https://evgeniygorbachev-glitch.github.io/re-hub/';
   const STUBS = {
@@ -1115,6 +1154,27 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
         ${kvCard('Оплата и обеспечение', [['Условия оплаты', esc(k.payTerms)], ['Обеспечительный платёж', rub(k.deposit)], ['Страхование', fv(k.insurance)], ['Субаренда', k.sublease ? 'разрешена' : 'запрещена']])}
         ${kvCard('Расторжение и выход', [['Выход без штрафа', 'с ' + dt(k.exitFree)], ['Выход со штрафом', 'с ' + dt(k.exitPenaltyFrom)], ['Штраф min / max', `${mln(k.penaltyMin || 0)} / ${mln(k.penaltyMax || 0)}`], ...(k.exitNote ? [['Комментарий', esc(k.exitNote)]] : []), ['Уведомление (наше)', fv(k.tenantNotice, (v) => (typeof v === 'number' ? v + ' мес.' : esc(v)))], ['Расторжение арендодателем', esc(k.landlordTerminate)], ['Уведомление (арендодателя)', fv(k.landlordNotice, (v) => (typeof v === 'number' ? v + ' мес.' : esc(v)))]])}
         ${kvCard('Штрафы по ДДА', [['Ремонт / перепланировка с нарушением', fv(k.fines.replan, rub)], ['Парковка не по назначению', fv(k.fines.parking, rub)], ['Неинформирование о предписаниях', fv(k.fines.noInform, rub)], ['Нарушения ПБ, min — max', k.fines.fireMin || k.fines.fireMax ? `${fv(k.fines.fireMin, rub)} — ${fv(k.fines.fireMax, rub)}` : NF]])}</div></div>`;
+    if (tab === 'costs') {
+      const cs = costSplit(o);
+      const COLORS = { 'ФФЦ': '#4c6ef5', 'СЦ': '#15aabf', 'Общее': '#adb5bd' };
+      body = `<div class="kpis">${kpi('Затраты на аренду в год', mln(cs.total), 'постоянная + OPEX + переменная')}${cs.rows.map((r) => kpi(`Статья «${esc(r.cc)}»`, mln(r.total), `${pct0(r.share)} · ${fmt(r.area)} м² · ${rub(r.m2)}/м²`)).join('')}</div>
+      <div class="note">ФФЦ и СЦ в одной локации относятся на разные статьи затрат. Договор с одной статьёй относится напрямую. Договор «ФФЦ/СЦ» делится по площадям ФФ и СЦ из реестра. Общие площади (АБК, КПП, земельный участок) распределяются пропорционально площадям статей.</div>
+      ${cs.notes.map((n) => `<div class="warn small" style="margin-bottom:8px">⚠ ${esc(n)}</div>`).join('')}
+      <div class="grid g2"><div class="card"><h2>Доли статей</h2>${stack100([{ label: 'Затраты', segs: cs.rows.map((r) => ({ name: r.cc, share: r.share, color: COLORS[r.cc] || '#fab005' })) }])}
+        <div class="legend">${cs.rows.map((r) => `<span><i style="background:${COLORS[r.cc] || '#fab005'}"></i>${esc(r.cc)} — ${pct0(r.share)}</span>`).join('')}</div></div>
+      <div class="card"><h2>Договоры и их статьи</h2><table><thead><tr><th>Договор / ДС</th><th>Назначение</th><th>Статья</th><th class="num">Площадь</th></tr></thead><tbody>${(o.units || []).filter((u) => !/опцион/i.test(u.kind || '')).map((u) => `<tr><td>${esc(u.rowNo || '')} ${esc(u.contract || '')}</td><td class="small">${esc(u.subtype || '')}</td><td>${pill(u.cc || '—', u.cc === 'ФФЦ' ? 'acc' : u.cc === 'СЦ' ? 'good' : 'neutral')}</td><td class="num">${fmt(u.area || 0)} м²</td></tr>`).join('')}</tbody></table></div></div>
+      <div class="card" style="margin-top:14px"><h2>Затраты по статьям, в год</h2>${tbl('cs-' + id, [
+        { h: 'Статья', v: (r) => r.cc, f: (r) => `<b>${esc(r.cc)}</b>` },
+        { h: 'Площадь', num: 1, v: (r) => r.area, f: (r) => fmt(r.area) + ' м²' },
+        { h: 'Постоянная аренда', num: 1, v: (r) => r.rent, f: (r) => mln(r.rent) },
+        { h: 'OPEX', num: 1, v: (r) => r.opex, f: (r) => mln(r.opex) },
+        { h: 'Переменная', num: 1, v: (r) => r.vari, f: (r) => mln(r.vari) },
+        { h: 'Доля общих площадей', num: 1, v: (r) => r.shared, f: (r) => (r.shared ? mln(r.shared) : '—') },
+        { h: 'Итого', num: 1, v: (r) => r.total, f: (r) => `<b>${mln(r.total)}</b>` },
+        { h: '₽/м² в год', num: 1, v: (r) => r.m2, f: (r) => rub(r.m2) },
+        { h: 'Как распределено', f: (r) => `<span class="small muted">${esc(r.how)}</span>` },
+      ], cs.rows)}</div>`;
+    }
     if (tab === 'resp') {
       const cnt = { 'А': 0, 'Я': 0, 'П': 0 }; c.resp.forEach((s) => s.rows.forEach((r) => cnt[r.who]++));
       const tag = (w) => `<span class="pill ${w === 'А' ? 'p-neutral' : w === 'Я' ? 'p-acc' : 'p-warn'}" style="min-width:26px;text-align:center">${w}</span>`;
@@ -1397,6 +1457,11 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     ${s.ts.length ? `<div class="card"><h2>Тикеты</h2>${ticketsTable('p-t', [...s.ts].sort((a, b) => (a.resolved ? 1 : 0) - (b.resolved ? 1 : 0) || b.created.localeCompare(a.created)))}</div>` : ''}`;
   };
 
+  function portfolioByCC(objs) {
+    const acc = {};
+    objs.forEach((o) => costSplit(o).rows.forEach((r) => { const a = (acc[r.cc] = acc[r.cc] || { cc: r.cc, total: 0, area: 0, locs: new Set() }); a.total += r.total; a.area += r.area; a.locs.add(o.id); }));
+    return Object.values(acc).sort((a, b) => b.total - a.total);
+  }
   V.lease = () => {
     const objs = fLocs();
     const regMed = {}; D.regions.forEach((r) => { regMed[r.id] = {}; D.businesses.forEach((b) => { regMed[r.id][b.id] = median((MIXED ? D.objects.filter((x) => x.real) : D.objects).filter((o) => o.region === r.id && o.business === b.id).map((o) => o.lease.rate)); }); });
@@ -1404,6 +1469,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const rows = objs.map((o) => ({ o, left: days(D.TODAY, o.lease.end), year: o.lease.rate * o.area * 12, idx: o.lease.rate / REG[o.region].k / bizMed[o.business] }));
     return `<h1>Аренда</h1><div class="sub">Ставки, сроки договоров и сравнение ставок с медианой по формату ${src('1С')}</div>
     <div class="kpis">${kpi('Годовая аренда', mln(sum(rows, 'year')))}${kpi('Истекают в 180 дн', `<span class="warn">${rows.filter((r) => r.left >= 0 && r.left < 180).length}</span>`)}${kpi('Уже истекли', `<span class="bad">${rows.filter((r) => r.left < 0).length}</span>`)}${kpi('Ставка выше рынка > 20%', rows.filter((r) => r.idx > 1.2).length)}</div>
+    ${(() => { const cc = portfolioByCC(objs.filter((o) => o.card.leaseStatus === 'В аренде')); return cc.length ? `<div class="card" style="margin-bottom:14px"><h2>Затраты на аренду по статьям, в год (действующие локации)</h2>${hbar(cc.map((r) => ({ label: `${r.cc} · ${r.locs.size} лок. · ${fmt(r.area)} м²`, value: r.total, color: r.cc === 'ФФЦ' ? '#4c6ef5' : r.cc === 'СЦ' ? '#15aabf' : '#fab005' })), { fmtV: mln, width: 760 })}<div class="legend">Постоянная аренда + OPEX + переменная часть. ФФЦ и СЦ одной локации разнесены по своим статьям, общие площади распределены по доле. Детали — во вкладке «Затраты по статьям» карточки локации.</div></div>` : ''; })()}
     <div class="card">${tbl('lease', [
       { h: 'Локация', v: (r) => r.o.name, f: (r) => objLink(r.o.id) },
       { h: 'Формат', v: (r) => r.o.business, f: (r) => BUS[r.o.business].name },
