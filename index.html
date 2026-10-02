@@ -455,12 +455,42 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       // «зависшие» на 08 счёте: смонтировано по завершённому проекту, но в ОС не введено
       if (source === 'capex' && rnd() < 0.15) { status = 'Не введено (сч. 08)'; accum = 0; }
       const inventory = source === 'wip' ? null : rnd() < 0.93 ? 'Совпадает' : pick(['Не найдено', 'Найдено по другому адресу', 'Излишек']);
-      const rel = tcat ? tickets.filter((t) => t.object === o.id && t.category === tcat) : [];
-      assets.push({ id: 'ОС-' + String(asi++).padStart(6, '0'), object: o.id, business: o.business, region: o.region, name, category: cat, qty, cost, life,
+      assets.push({ id: 'ОС-' + String(asi++).padStart(6, '0'), object: o.id, business: o.business, region: o.region, name, category: cat, qty, cost, life, tcat,
         inService: inService && status !== 'Не введено (сч. 08)' ? iso(inService) : null, accum, residual: cost - accum, status, condition: cond, source, project,
         warrantyEnd: inService ? iso(addDays(inService, 365 * pick([1, 2, 3]))) : null, inventory, inventoryDate: inventory ? iso(addDays(TODAY, -int(20, 300))) : null,
-        failures: rel.length, repairs: rel.reduce((a, t) => a + t.cost, 0), mol: o.opsEngineer });
+        mol: o.opsEngineer, repairs: [] });
     }
+  }
+
+  // ---------- История ремонтов по инвентарному номеру ----------
+  // Тикеты Трекера (последние 90 дн) привязываются к конкретной единице ОС: чаще ломается изношенное
+  const ASSET_BY_ID = Object.fromEntries(assets.map((a) => [a.id, a]));
+  for (const t of tickets) {
+    const cands = assets.filter((a) => a.object === t.object && a.tcat === t.category && a.inService);
+    if (!cands.length) continue;
+    const w = cands.map((a) => 0.3 + a.accum / a.cost + (a.status === 'Требует ремонта' ? 1.5 : 0));
+    let r = rnd() * w.reduce((x, y) => x + y, 0), k = 0;
+    while (r > w[k] && k < cands.length - 1) r -= w[k++];
+    t.asset = cands[k].id;
+    cands[k].repairs.push({ date: t.created, kind: t.priority === 'Блокер' || t.priority === 'Критичный' ? 'Аварийный ремонт' : 'Текущий ремонт', what: t.summary, cost: t.cost, src: 'ТРЕКЕР', ref: t.key, by: t.assignee });
+  }
+  // Более ранняя история — акты ремонта и ТО из 1С
+  const repairWhat = { 'Холодильное оборудование': ['Дозаправка хладагента', 'Замена компрессора', 'Замена вентилятора конденсатора', 'Устранение утечки'], 'Вентиляция и кондиционирование': ['Замена ремня привода', 'Замена фильтров', 'Ремонт платы управления', 'Замена двигателя вентилятора'], 'Двери и ворота': ['Замена пружин', 'Ремонт привода', 'Замена уплотнителей', 'Регулировка'], 'Электрооборудование': ['Замена автомата', 'Протяжка контактов', 'Замена УЗО'], 'Пожарная безопасность': ['Замена датчиков', 'Ремонт ППКП'], 'Тепло- и водоснабжение': ['Замена насоса', 'Промывка теплообменника', 'Замена запорной арматуры'], 'Слаботочные системы': ['Замена камеры', 'Замена контроллера'], 'Складская техника': ['Замена АКБ', 'Ремонт гидравлики', 'Замена колёс'], 'Стеллажи': ['Замена повреждённой стойки', 'Замена балок'], 'Торговое оборудование': ['Ремонт ленты кассы'], 'Мебель': ['Замена механизма кресла'] };
+  for (const a of assets) {
+    if (!a.inService) continue;
+    const start = new Date(a.inService), histEnd = addDays(TODAY, -90);
+    if (start >= histEnd) continue;
+    const years = (histEnd - start) / (365 * day);
+    const rate = (a.tcat ? 1.1 : 0.25) * (0.6 + 1.6 * a.accum / a.cost) * (a.status === 'Требует ремонта' || a.status === 'К списанию' ? 2 : 1);
+    const n = Math.round(years * rate * between(0.5, 1.5));
+    for (let i = 0; i < n; i++) {
+      const d = new Date(start.getTime() + rnd() * (histEnd - start));
+      const major = rnd() < 0.18;
+      a.repairs.push({ date: iso(d), kind: major ? 'Капитальный ремонт узла' : 'Текущий ремонт', what: pick(repairWhat[a.category] || ['Ремонт']), cost: Math.round(a.cost / a.qty * (major ? between(0.08, 0.25) : between(0.005, 0.04)) / 100) * 100, src: '1С', ref: 'АКТ-' + int(10000, 99999), by: a.mol });
+    }
+    // плановое ТО раз в год для инженерных систем
+    if (a.tcat) for (let y = 1; y <= Math.floor(years); y++) a.repairs.push({ date: iso(addDays(start, 365 * y)), kind: 'Плановое ТО', what: 'Регламентное обслуживание', cost: Math.round(a.cost / a.qty * 0.012 / 100) * 100, src: '1С', ref: 'ТО-' + int(10000, 99999), by: a.mol });
+    a.repairs.sort((x, y) => y.date.localeCompare(x.date));
   }
 
   window.DB = { TODAY: iso(TODAY), businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets };
@@ -787,6 +817,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       { h: 'Создан', v: (t) => t.created, f: (t) => dt(t.created) },
       { h: 'Часы / SLA', num: 1, v: (t) => t.hours / t.slaH, f: (t) => `<span class="${t.hours > t.slaH ? 'bad' : 'good'}">${t.hours} / ${t.slaH} ч</span>` },
       { h: 'Затраты', num: 1, v: (t) => t.cost, f: (t) => (t.cost ? rub(t.cost) : '—') },
+      { h: 'Инв. №', v: (t) => t.asset || '', f: (t) => (t.asset ? `<a href="${assetHref(ASSET[t.asset])}">${t.asset}</a>` : '<span class="muted">—</span>') },
     ], ts.slice(0, 200));
   }
 
@@ -1183,7 +1214,15 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   const condPill = (c) => pill(c, { 'Новое': 'acc', 'Хорошее': 'good', 'Удовлетворительное': 'neutral', 'Неудовлетворительное': 'bad' }[c]);
   const isStuck = (a) => a.status === WIP && a.source === 'capex';
   const wear = (a) => (a.cost ? a.accum / a.cost : 0);
-  const replaceCandidate = (a) => a.status !== WIP && (a.repairs > a.residual * 0.5 && a.repairs > 0 || wear(a) >= 0.95);
+  const d12 = new Date(new Date(D.TODAY) - 365 * 864e5).toISOString().slice(0, 10), d90 = new Date(new Date(D.TODAY) - 90 * 864e5).toISOString().slice(0, 10);
+  const fixes = (a) => a.repairs.filter((r) => r.kind !== 'Плановое ТО');
+  const fixes12 = (a) => fixes(a).filter((r) => r.date >= d12).length, fixes90 = (a) => fixes(a).filter((r) => r.date >= d90).length;
+  const repCost = (a) => sum(a.repairs, 'cost');
+  const inWarranty = (a, r) => a.warrantyEnd && r.kind !== 'Плановое ТО' && r.date <= a.warrantyEnd && r.cost > 0;
+  const warrantyPaid = (a) => sum(a.repairs.filter((r) => inWarranty(a, r)), 'cost');
+  const ASSET = idx(D.assets);
+  const assetHref = (a) => `#/asset/${encodeURIComponent(a.id)}`;
+  const replaceCandidate = (a) => a.status !== WIP && ((repCost(a) > a.residual * 0.5 && repCost(a) > 0) || wear(a) >= 0.95 || fixes12(a) >= 6);
   const srcLabel = (a) => (a.source === 'opening' ? 'Ввод объекта' : a.project ? `${a.source === 'capex' ? 'CAPEX' : 'Текущий проект'} ${a.project}` : '—');
   const fAssets = () => { const os = new Set(fObjects().map((o) => o.id)); return D.assets.filter((a) => os.has(a.object)); };
 
@@ -1199,7 +1238,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       { h: 'Остаточная', num: 1, v: (a) => a.residual, f: (a) => mln(a.residual) },
       { h: 'Износ', num: 1, v: wear, f: (a) => (a.status === WIP ? '—' : `<div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">${pct0(wear(a))}<div class="bar" style="width:50px"><i style="width:${wear(a) * 100}%;background:${wear(a) > 0.85 ? '#c92a2a' : wear(a) > 0.5 ? '#e67700' : '#2b8a3e'}"></i></div></div>`) },
       { h: 'Тех. состояние', v: (a) => a.condition, f: (a) => condPill(a.condition) },
-      { h: `Отказы 90 дн ${src('ТРЕКЕР')}`, num: 1, v: (a) => a.failures, f: (a) => (a.failures ? `${a.failures}${a.repairs ? ` <span class="muted small">· ${mln(a.repairs)}</span>` : ''}` : '—') },
+      { h: 'Ремонтов: всего / 12 мес / 90 дн', num: 1, v: (a) => fixes12(a) * 1000 + fixes(a).length, f: (a) => (fixes(a).length ? `<b>${fixes(a).length}</b> / <span class="${fixes12(a) >= 6 ? 'bad' : fixes12(a) >= 3 ? 'warn' : ''}">${fixes12(a)}</span> / ${fixes90(a)}` : '—') },
+      { h: 'Затраты на ремонт и ТО', num: 1, v: repCost, f: (a) => (repCost(a) ? `<span class="${repCost(a) > a.residual * 0.5 && a.status !== WIP ? 'bad' : ''}">${mln(repCost(a))}</span>` : '—') },
       { h: 'Гарантия', v: (a) => a.warrantyEnd || '', f: (a) => (a.warrantyEnd ? `<span class="${a.warrantyEnd < D.TODAY ? 'muted' : days(D.TODAY, a.warrantyEnd) < 90 ? 'warn' : 'good'}">${a.warrantyEnd < D.TODAY ? 'истекла' : 'до ' + dt(a.warrantyEnd)}</span>` : '—') },
       { h: 'Инвентаризация', v: (a) => a.inventory || '', f: (a) => (a.inventory ? (a.inventory === 'Совпадает' ? `<span class="good small">✓ ${dt(a.inventoryDate)}</span>` : pill(a.inventory, 'bad')) : '—') },
     ];
@@ -1212,6 +1252,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const filters = {
       '': ['Все', () => true], stuck: ['Зависли на 08 после проекта', isStuck], wip: ['Строящиеся (сч. 08)', (a) => a.status === WIP && !isStuck(a)],
       repair: ['Требует ремонта / к списанию', (a) => a.status === 'Требует ремонта' || a.status === 'К списанию'], replace: ['Кандидаты на замену', replaceCandidate],
+      often: ['Частые ремонты (≥ 6 за 12 мес)', (a) => fixes12(a) >= 6],
+      wpaid: ['Платили за ремонт в гарантию', (a) => warrantyPaid(a) > 0],
       inv: ['Расхождения инвентаризации', (a) => a.inventory && a.inventory !== 'Совпадает'], warranty: ['Гарантия < 90 дн', (a) => a.warrantyEnd && a.warrantyEnd >= D.TODAY && days(D.TODAY, a.warrantyEnd) < 90],
     };
     as = all.filter(filters[filt][1]);
@@ -1226,6 +1268,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       ${kpi('Зависло на 08 после проектов', `<span class="bad">${mln(sum(all.filter(isStuck), 'cost'))}</span>`, `${all.filter(isStuck).length} позиций · амортизация не начисляется`)}
       ${kpi('Строящиеся, сч. 08', mln(sum(all.filter((a) => a.status === WIP && !isStuck(a)), 'cost')))}
       ${kpi('Ремонт / к списанию', all.filter((a) => a.status === 'Требует ремонта' || a.status === 'К списанию').length, `кандидатов на замену: ${all.filter(replaceCandidate).length}`)}
+      ${kpi('Оплачено ремонтов в гарантию', `<span class="bad">${mln(sum(all, warrantyPaid))}</span>`, `${all.filter((a) => warrantyPaid(a)).length} позиций · претензии подрядчикам`)}
       ${kpi('Расхождения инвентаризации', `<span class="${all.some((a) => a.inventory && a.inventory !== 'Совпадает') ? 'bad' : ''}">${all.filter((a) => a.inventory && a.inventory !== 'Совпадает').length}</span>`)}
     </div>
     <div class="grid g2" style="margin-bottom:14px">
@@ -1238,7 +1281,46 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       ], capexDone.filter((p) => D.assets.some((a) => a.project === p.id)).sort((a, b) => sum(D.assets.filter((x) => x.project === b.id && x.status === WIP), 'cost') - sum(D.assets.filter((x) => x.project === a.id && x.status === WIP), 'cost')).slice(0, 10))}</div>
     </div>
     <div class="tabs">${Object.entries(filters).map(([k, [label, fn]]) => `<button class="btn ${filt === k ? 'on' : ''}" data-afilter="${k}">${label} (${all.filter(fn).length})</button>`).join('')}</div>
-    <div class="card">${tbl('assets', assetCols(true), as.slice(0, 300))}${as.length > 300 ? `<div class="muted small" style="margin-top:8px">Показаны 300 из ${as.length}</div>` : ''}</div>`;
+    <div class="card" style="margin-bottom:14px"><h2>Топ-10 по числу ремонтов за 12 месяцев (по инвентарному номеру)</h2>${hbar([...all].filter((a) => fixes12(a)).sort((a, b) => fixes12(b) - fixes12(a)).slice(0, 10).map((a) => ({ label: `${a.id} · ${a.name} · ${OBJ[a.object].type} ${REG[a.region].name.split(' ')[0]}`, value: fixes12(a), href: assetHref(a), color: fixes12(a) >= 6 ? '#c92a2a' : '#e67700' })), { width: 760 })}</div>
+    <div class="card">${tbl('assets', assetCols(true), as.slice(0, 300), { href: assetHref })}${as.length > 300 ? `<div class="muted small" style="margin-top:8px">Показаны 300 из ${as.length}</div>` : ''}</div>`;
+  };
+
+  V.asset = (id) => {
+    const a = ASSET[id]; if (!a) return '<h1>Оборудование не найдено</h1>';
+    const fx = fixes(a);
+    const years = {}; a.repairs.forEach((r) => { const y = r.date.slice(0, 4); const c = (years[y] = years[y] || { n: 0, cost: 0 }); if (r.kind !== 'Плановое ТО') c.n++; c.cost += r.cost; });
+    const lastFix = fx[0];
+    const mtbf = fx.length > 1 ? Math.round(days(fx[fx.length - 1].date, fx[0].date) / (fx.length - 1)) : null;
+    return `<div class="crumbs"><a href="#/assets">Оборудование и ОС</a> / ${objLink(a.object)} / ${a.id}</div>
+    <h1>${esc(a.name)} <span class="muted" style="font-weight:400">· ${a.status === WIP ? 'инв. № не присвоен' : a.id}</span></h1>
+    <div class="sub">${esc(a.category)} · ${a.qty} шт · ${assetStatusPill(a.status)} ${condPill(a.condition)} ${replaceCandidate(a) ? pill('кандидат на замену', 'bad') : ''}</div>
+    <div class="kpis">
+      ${kpi('Ремонтов всего', fx.length, `за 12 мес: <span class="${fixes12(a) >= 6 ? 'bad' : ''}">${fixes12(a)}</span> · за 90 дн: ${fixes90(a)}`)}
+      ${kpi('Затраты на ремонт и ТО', mln(repCost(a)), a.status !== WIP ? `<span class="${repCost(a) > a.residual * 0.5 ? 'bad' : 'muted'}">${pct0(a.residual ? repCost(a) / a.residual : 0)} от остаточной</span>` : '')}
+      ${kpi('Оплачено ремонтов в гарантию', warrantyPaid(a) ? `<span class="bad">${mln(warrantyPaid(a))}</span>` : '—', warrantyPaid(a) ? 'можно предъявить поставщику / подрядчику' : '')}
+      ${kpi('Средняя наработка между ремонтами', mtbf ? mtbf + ' дн' : '—')}
+      ${kpi('Последний ремонт', lastFix ? dt(lastFix.date) : '—', lastFix ? esc(lastFix.what) : '')}
+      ${kpi(`Остаточная ${src('1С')}`, mln(a.residual), a.status === WIP ? '' : `износ ${pct0(wear(a))}`)}
+    </div>
+    <div class="grid g2" style="margin-bottom:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)">
+      <div class="card"><h2>Учётная карточка ${src('1С')}</h2><div class="kv">
+        <div>Инв. №</div><div>${a.status === WIP ? '— (на сч. 08)' : a.id}</div><div>Объект</div><div>${objLink(a.object)}</div>
+        <div>Источник</div><div>${srcLabel(a)}</div><div>Ввод в эксплуатацию</div><div>${dt(a.inService)}</div>
+        <div>СПИ</div><div>${a.life} лет</div><div>Первоначальная</div><div>${rub(a.cost)}</div>
+        <div>Накопленная амортизация</div><div>${rub(a.accum)}</div><div>Остаточная</div><div>${rub(a.residual)}</div>
+        <div>Гарантия</div><div>${a.warrantyEnd ? (a.warrantyEnd < D.TODAY ? 'истекла ' : 'до ') + dt(a.warrantyEnd) : '—'}</div>
+        <div>Инвентаризация</div><div>${a.inventory ? `${esc(a.inventory)} · ${dt(a.inventoryDate)}` : '—'}</div><div>МОЛ</div><div>${person(a.mol)}</div>
+      </div></div>
+      <div class="card"><h2>Ремонты по годам</h2>${Object.keys(years).length ? hbar(Object.entries(years).sort().map(([y, v]) => ({ label: `${y} · ${mln(v.cost)}`, value: v.n, color: v.n >= 6 ? '#c92a2a' : '#3b5bdb' })), { fmtV: (v) => v + ' рем.' }) : '<div class="muted">Ремонтов не было</div>'}</div>
+    </div>
+    <div class="card"><h2>История ремонтов и обслуживания</h2>${tbl('rep-' + a.id, [
+      { h: 'Дата', v: (r) => r.date, f: (r) => dt(r.date) },
+      { h: 'Вид', v: (r) => r.kind, f: (r) => pill(r.kind, r.kind === 'Аварийный ремонт' ? 'bad' : r.kind === 'Капитальный ремонт узла' ? 'warn' : r.kind === 'Плановое ТО' ? 'neutral' : 'acc') },
+      { h: 'Что сделано', v: (r) => r.what, f: (r) => esc(r.what) },
+      { h: 'Источник', v: (r) => r.src, f: (r) => `${src(r.src)} <span class="muted small">${r.ref}</span>` },
+      { h: 'Исполнитель', v: (r) => PPL[r.by]?.name || '', f: (r) => person(r.by) },
+      { h: 'Стоимость', num: 1, v: (r) => r.cost, f: (r) => (r.cost ? rub(r.cost) : '—') + (inWarranty(a, r) ? ` ${pill('в гарантию', 'bad')}` : '') },
+    ], a.repairs, { empty: 'Ремонтов и ТО не было' })}</div>`;
   };
 
   function assetsCard(o) {
@@ -1247,7 +1329,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const inUse = as.filter((a) => a.status !== WIP);
     return `<div class="card" style="margin-bottom:14px"><h2>Оборудование и ОС ${src('1С')}</h2>
       <div class="kpis">${kpi('Позиций', as.length)}${kpi('Первоначальная', mln(sum(inUse, 'cost')))}${kpi('Остаточная', mln(sum(inUse, 'residual')), inUse.length ? `износ ${pct0(sum(inUse, 'accum') / sum(inUse, 'cost'))}` : '')}${kpi('На сч. 08', mln(sum(as.filter((a) => a.status === WIP), 'cost')), as.some(isStuck) ? `<span class="bad">${as.filter(isStuck).length} зависли после проекта</span>` : '')}${kpi('Требуют внимания', as.filter((a) => a.status === 'Требует ремонта' || a.status === 'К списанию' || replaceCandidate(a)).length)}</div>
-      ${tbl('as-' + o.id, assetCols(false), as)}<div class="muted small" style="margin-top:6px">МОЛ: ${person(as[0].mol)}</div></div>`;
+      ${tbl('as-' + o.id, assetCols(false), as, { href: assetHref })}<div class="muted small" style="margin-top:6px">МОЛ: ${person(as[0].mol)}</div></div>`;
   }
 
   V.about = () => `<h1>О проекте</h1><div class="sub">Прототип для обсуждения с командой · все данные синтетические</div>
@@ -1290,6 +1372,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
         <li>Кто будет вносить замечания и приёмки: технадзор, РП или подрядчик?</li>
         <li>Какие данные нельзя показывать всем (деньги, аренда)?</li>
         <li>Есть ли утверждённые стандарты форматов с нормативами по зонам? Где хранятся актуальные планировки объектов?</li>
+        <li>Можно ли добавить поле «Инв. №» в очереди эксплуатации и промаркировать оборудование QR-кодами?</li>
       </ol></div>
     </div>`;
 
@@ -1315,7 +1398,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const fn = V[route] || V.overview;
     renderFilters();
     $('#view').innerHTML = fn(param && decodeURIComponent(param));
-    const navR = { object: 'objects', compare: 'projects', person: 'people' }[route] || route;
+    const navR = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets' }[route] || route;
     document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.r === navR));
   }
   window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
