@@ -1,0 +1,1003 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RE Hub — единый контур недвижимости</title>
+  <style>
+:root {
+  --bg: #f4f5f7; --card: #fff; --ink: #1d2433; --muted: #6b7385; --line: #e4e7ec;
+  --accent: #3b5bdb; --accent-soft: #e8edff; --good: #2b8a3e; --warn: #e67700; --bad: #c92a2a;
+  --good-soft: #e6f4ea; --warn-soft: #fff4e0; --bad-soft: #fdecec;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); display: flex; min-height: 100vh; }
+.side { width: 220px; flex: none; background: #151b2c; color: #c9d0e0; padding: 18px 14px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; }
+.logo { font-size: 22px; font-weight: 800; color: #fff; margin: 0 6px 18px; letter-spacing: .5px; }
+.logo span { color: #7c95ff; }
+nav a { display: block; padding: 8px 10px; border-radius: 8px; color: #c9d0e0; text-decoration: none; margin-bottom: 2px; }
+nav a:hover { background: #222b42; }
+nav a.active { background: var(--accent); color: #fff; }
+.sources { margin-top: auto; font-size: 12px; display: grid; gap: 5px; }
+main { flex: 1; min-width: 0; }
+.filters { position: sticky; top: 0; z-index: 5; background: #fff; border-bottom: 1px solid var(--line); padding: 10px 24px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.filters label { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+select, input[type=search] { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+#view { padding: 20px 24px 60px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0 0 12px; }
+.sub { color: var(--muted); margin-bottom: 18px; }
+.muted { color: var(--muted); } .small { font-size: 12px; }
+.grid { display: grid; gap: 14px; }
+.g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 1200px) { .g2, .g3 { grid-template-columns: 1fr; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.kpi .v { font-size: 22px; font-weight: 700; margin-top: 2px; }
+.kpi .l { font-size: 12px; color: var(--muted); }
+.kpi .d { font-size: 12px; margin-top: 2px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; cursor: default; }
+th.sortable { cursor: pointer; } th.sortable:hover { color: var(--ink); }
+td { padding: 7px 8px; border-bottom: 1px solid #f0f1f4; vertical-align: middle; }
+tr.click { cursor: pointer; } tr.click:hover td { background: #f7f8fb; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl-wrap { overflow-x: auto; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+.p-good { background: var(--good-soft); color: var(--good); } .p-warn { background: var(--warn-soft); color: var(--warn); }
+.p-bad { background: var(--bad-soft); color: var(--bad); } .p-neutral { background: #eef0f4; color: #4a5263; }
+.p-acc { background: var(--accent-soft); color: var(--accent); }
+.good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+.src { display: inline-block; font-size: 10px; font-weight: 700; padding: 0 5px; border-radius: 4px; letter-spacing: .3px; vertical-align: middle; }
+.s1c { background: #ffe066; color: #5c4400; } .sfin { background: #b2f2bb; color: #1b5e20; } .sst { background: #a5d8ff; color: #0b3d66; } .shub { background: #d0bfff; color: #3b1e8a; }
+.bar { height: 6px; background: #eef0f4; border-radius: 4px; overflow: hidden; min-width: 60px; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+.btn { font: inherit; border: 1px solid var(--line); background: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+.tabs { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+.tabs .btn.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.ph { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; cursor: pointer; }
+.ph img { width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover; }
+.ph .cap { padding: 8px 10px; font-size: 12px; }
+.ph .cap b { display: block; font-size: 13px; margin-bottom: 2px; }
+.strip { display: flex; gap: 6px; flex-wrap: wrap; }
+.strip img { width: 84px; height: 63px; border-radius: 6px; cursor: pointer; border: 1px solid var(--line); }
+.modal { position: fixed; inset: 0; background: rgba(15, 20, 35, .6); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 30px; }
+.modal.hidden { display: none; }
+.modal .box { background: #fff; border-radius: 14px; max-width: 980px; width: 100%; max-height: 90vh; overflow: auto; padding: 20px; }
+.modal .imgs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+.modal .imgs img { width: 100%; border-radius: 8px; }
+.kv { display: grid; grid-template-columns: 160px 1fr; gap: 4px 12px; font-size: 13px; }
+.kv div:nth-child(odd) { color: var(--muted); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+svg text { font-family: inherit; }
+a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+.crumbs { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.note { background: var(--accent-soft); border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
+
+.kpi .v a { font-size: 16px; }
+.kpi .v { overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  body { display: block; }
+  .side { position: sticky; top: 0; z-index: 20; width: auto; height: auto; padding: 8px 10px; flex-direction: row; align-items: center; gap: 10px; }
+  .logo { margin: 0; font-size: 18px; }
+  nav { display: flex; overflow-x: auto; gap: 2px; }
+  nav a { white-space: nowrap; margin: 0; padding: 6px 9px; }
+  nav a[data-r="about"] { margin-top: 0 !important; }
+  .sources { display: none; }
+  .filters { position: static; padding: 8px 12px; }
+  #view { padding: 14px 12px 40px; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .kpi .v { font-size: 18px; }
+  .modal { padding: 10px; } .modal .imgs { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+  <aside class="side">
+    <div class="logo">RE<span>Hub</span></div>
+    <nav id="nav">
+      <a href="#/overview" data-r="overview">Обзор</a>
+      <a href="#/objects" data-r="objects">Объекты</a>
+      <a href="#/projects" data-r="projects">Проекты и сравнение</a>
+      <a href="#/benchmark" data-r="benchmark">Бенчмарк работ</a>
+      <a href="#/defects" data-r="defects">Замечания</a>
+      <a href="#/acceptances" data-r="acceptances">Приёмки</a>
+      <a href="#/ops" data-r="ops">Эксплуатация</a>
+      <a href="#/people" data-r="people">Люди</a>
+      <a href="#/lease" data-r="lease">Аренда</a>
+      <a href="#/about" data-r="about" style="margin-top:10px;border:1px solid #2c3550">О проекте</a>
+    </nav>
+    <div class="sources">
+      <div class="muted small">Источники данных</div>
+      <div><span class="src s1c">1С</span> договоры, КС-2, оплаты</div>
+      <div><span class="src sfin">ФИН</span> бюджеты</div>
+      <div><span class="src sst">ТРЕКЕР</span> тикеты</div>
+      <div><span class="src shub">HUB</span> замечания, приёмки</div>
+      <div class="muted small" style="margin-top:6px">Демо-данные · срез на <span id="today"></span></div>
+    </div>
+  </aside>
+  <main>
+    <div style="background:#fff4e0;color:#8a4b00;font-size:12px;padding:6px 24px;border-bottom:1px solid #f5d9a8">Прототип для обсуждения · все данные синтетические · <a href="#/about">о проекте и вопросы к команде</a></div>
+    <header class="filters" id="filters"></header>
+    <section id="view"></section>
+  </main>
+  <div id="modal" class="modal hidden"></div>
+  <script>
+// Демо-данные. Детерминированный генератор: одинаковые цифры при каждом открытии.
+(function () {
+  let s = 20261002;
+  const rnd = () => { s |= 0; s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const between = (a, b) => a + rnd() * (b - a);
+  const int = (a, b) => Math.floor(between(a, b + 1));
+  const TODAY = new Date('2026-10-02');
+  const day = 864e5;
+  const addDays = (d, n) => new Date(d.getTime() + n * day);
+  const iso = (d) => d.toISOString().slice(0, 10);
+
+  const businesses = [
+    { id: 'retail', name: 'Ритейл' },
+    { id: 'logistics', name: 'Логистика' },
+    { id: 'offices', name: 'Офисы' },
+    { id: 'darkstores', name: 'Дарксторы' },
+  ];
+  const directions = [
+    { id: 'lease', name: 'Аренда' },
+    { id: 'build', name: 'Стройка' },
+    { id: 'ops', name: 'Эксплуатация' },
+    { id: 'launch', name: 'Запуск' },
+  ];
+  const regions = [
+    { id: 'msk', name: 'Москва', k: 1.0 },
+    { id: 'mo', name: 'Московская обл.', k: 0.93 },
+    { id: 'spb', name: 'Санкт-Петербург', k: 0.96 },
+    { id: 'kzn', name: 'Казань', k: 0.84 },
+    { id: 'ekb', name: 'Екатеринбург', k: 0.86 },
+    { id: 'nsk', name: 'Новосибирск', k: 0.88 },
+    { id: 'krd', name: 'Краснодар', k: 0.85 },
+    { id: 'nnv', name: 'Нижний Новгород', k: 0.82 },
+  ];
+  const objTypes = {
+    retail: { t: 'Магазин', area: [600, 2500] },
+    logistics: { t: 'Склад', area: [8000, 42000] },
+    offices: { t: 'Офис', area: [1500, 12000] },
+    darkstores: { t: 'Даркстор', area: [450, 1400] },
+  };
+  const streets = ['ул. Ленина', 'пр-т Мира', 'ул. Гагарина', 'Промышленная ул.', 'ул. Советская', 'Складской пр.', 'ул. Строителей', 'Индустриальная ул.', 'ул. Садовая', 'Кольцевая ул.'];
+
+  const people = [
+    ['ivanova', 'Анна Иванова', 'Руководитель проектов'],
+    ['petrov', 'Дмитрий Петров', 'Руководитель проектов'],
+    ['sidorov', 'Олег Сидоров', 'Руководитель проектов'],
+    ['kuznetsova', 'Мария Кузнецова', 'Руководитель проектов'],
+    ['smirnov', 'Игорь Смирнов', 'Технадзор'],
+    ['volkov', 'Артём Волков', 'Технадзор'],
+    ['morozova', 'Елена Морозова', 'Технадзор'],
+    ['lebedev', 'Павел Лебедев', 'Инженер эксплуатации'],
+    ['kozlov', 'Сергей Козлов', 'Инженер эксплуатации'],
+    ['novikova', 'Ольга Новикова', 'Инженер эксплуатации'],
+    ['egorov', 'Никита Егоров', 'Инженер эксплуатации'],
+    ['fedorova', 'Татьяна Фёдорова', 'Инженер эксплуатации'],
+    ['orlov', 'Роман Орлов', 'Менеджер аренды'],
+    ['belova', 'Ксения Белова', 'Менеджер аренды'],
+  ].map(([id, name, role]) => ({ id, name, role }));
+  const byRole = (r) => people.filter((p) => p.role === r);
+
+  const contractors = [
+    ['c1', 'СтройИнвест', 1.0, 0.9], ['c2', 'ТехноМонтаж', 0.95, 1.2], ['c3', 'ПромСтрой-Регион', 0.88, 1.5],
+    ['c4', 'АльфаИнжиниринг', 1.12, 0.6], ['c5', 'ГрандФасад', 1.05, 1.0], ['c6', 'Вектор-СМУ', 0.92, 1.3],
+    ['c7', 'Климат Профи', 1.08, 0.8], ['c8', 'ЭлектроСети-М', 0.97, 1.1], ['c9', 'Северная Линия', 0.9, 1.7],
+    ['c10', 'Монолит Групп', 1.18, 0.7],
+  ].map(([id, name, priceK, defectK]) => ({ id, name, priceK, defectK }));
+
+  // Классификатор видов работ (КСР)
+  const works = [
+    ['W01', 'Устройство наливного пола', 'м²', 1850], ['W02', 'Монтаж перегородок ГКЛ', 'м²', 2250],
+    ['W03', 'Окраска стен', 'м²', 460], ['W04', 'Монтаж вентиляции', 'м²', 3400],
+    ['W05', 'Электромонтажные работы', 'м²', 2750], ['W06', 'Подвесной потолок «Армстронг»', 'м²', 1650],
+    ['W07', 'Кровельные работы (ПВХ-мембрана)', 'м²', 3100], ['W08', 'Монтаж СКС', 'порт', 6400],
+    ['W09', 'Пожарная сигнализация и СОУЭ', 'м²', 880], ['W10', 'Укладка керамогранита', 'м²', 2600],
+    ['W11', 'Монтаж противопожарных дверей', 'шт', 46000], ['W12', 'Монтаж холодильных камер', 'шт', 780000],
+    ['W13', 'Монтаж стеллажей', 'паллетоместо', 2100], ['W14', 'Асфальтирование территории', 'м²', 2300],
+  ].map(([id, name, unit, base]) => ({ id, name, unit, base }));
+
+  const objects = [];
+  let oi = 1;
+  for (const b of businesses) {
+    const n = b.id === 'logistics' ? 12 : b.id === 'offices' ? 10 : 18;
+    for (let i = 0; i < n; i++) {
+      const r = pick(regions);
+      const tp = objTypes[b.id];
+      const area = Math.round(between(...tp.area) / 10) * 10;
+      const status = rnd() < 0.62 ? 'В эксплуатации' : rnd() < 0.6 ? 'Стройка' : 'Запуск';
+      const leaseRate = Math.round((b.id === 'logistics' ? between(650, 1050) : b.id === 'offices' ? between(1900, 3600) : between(1500, 3200)) * r.k);
+      objects.push({
+        id: 'OBJ-' + String(oi++).padStart(3, '0'), business: b.id, region: r.id,
+        type: tp.t, name: `${tp.t} ${r.name.split(' ')[0]} · ${pick(streets).replace(/^(ул\.|пр-т) /, '')}`,
+        address: `${r.name}, ${pick(streets)}, ${int(1, 180)}`, area, status,
+        lease: { rate: leaseRate, landlord: pick(['ООО «Девелопмент Плюс»', 'АО «ПромПарк»', 'ООО «Сити Эстейт»', 'ИП Колесников', 'ООО «Логистик Пропертиз»']), end: iso(addDays(TODAY, int(-40, 1400))) },
+        opsEngineer: pick(byRole('Инженер эксплуатации')).id, leaseManager: pick(byRole('Менеджер аренды')).id,
+      });
+    }
+  }
+
+  const projectTypes = { build: ['Строительство', 'Реконструкция', 'Капремонт кровли'], launch: ['Фит-аут под запуск', 'Ребрендинг', 'Расширение'], ops: ['Текущий ремонт', 'Замена инженерии'] };
+  const worksFor = {
+    retail: ['W01', 'W02', 'W03', 'W05', 'W06', 'W09', 'W10', 'W11', 'W12', 'W08'],
+    darkstores: ['W01', 'W02', 'W03', 'W04', 'W05', 'W09', 'W12', 'W13', 'W11'],
+    logistics: ['W01', 'W04', 'W05', 'W07', 'W09', 'W11', 'W13', 'W14'],
+    offices: ['W02', 'W03', 'W04', 'W05', 'W06', 'W08', 'W09', 'W10', 'W11'],
+  };
+  const projects = [];
+  let pi = 1;
+  for (const o of objects) {
+    const cnt = o.status === 'В эксплуатации' ? (rnd() < 0.7 ? 1 : 0) + (rnd() < 0.2 ? 1 : 0) : 1 + (rnd() < 0.3 ? 1 : 0);
+    for (let k = 0; k < cnt; k++) {
+      const dir = o.status === 'Стройка' ? 'build' : o.status === 'Запуск' ? 'launch' : pick(['build', 'launch', 'ops']);
+      const ctr = pick(contractors);
+      const reg = regions.find((r) => r.id === o.region);
+      const planDur = int(45, o.business === 'logistics' ? 300 : 160);
+      const planStart = addDays(TODAY, -int(20, o.status === 'В эксплуатации' && rnd() < 0.6 ? 420 : Math.round(planDur * 0.85)));
+      const planEnd = addDays(planStart, planDur);
+      const slip = Math.round(planDur * (rnd() < 0.35 ? between(0.15, 0.6) : between(-0.05, 0.12)) * ctr.defectK);
+      const factEnd = addDays(planEnd, slip);
+      const done = factEnd < TODAY;
+      const progress = done ? 100 : Math.max(5, Math.min(97, Math.round(((TODAY - planStart) / (factEnd - planStart)) * 100)));
+      // строки работ (КС-2)
+      const pool = worksFor[o.business];
+      const lines = [];
+      const chosen = new Set();
+      const nLines = int(4, Math.min(8, pool.length));
+      while (chosen.size < nLines) chosen.add(pick(pool));
+      for (const wid of chosen) {
+        const w = works.find((x) => x.id === wid);
+        const scale = dir === 'ops' ? 0.25 : 1;
+        let qty;
+        if (w.unit === 'м²') qty = Math.round(o.area * between(0.3, 1.0) * scale);
+        else if (w.unit === 'порт') qty = Math.round((o.area / 12) * scale);
+        else if (w.unit === 'паллетоместо') qty = Math.round((o.area / 2.2) * scale);
+        else if (w.id === 'W12') qty = Math.max(1, Math.round((o.area / 600) * scale));
+        else qty = Math.max(2, Math.round((o.area / 300) * scale));
+        const outlier = rnd() < 0.08 ? between(1.35, 1.7) : 1;
+        const price = Math.round(w.base * reg.k * ctr.priceK * between(0.9, 1.12) * outlier);
+        lines.push({ work: wid, qty, price, sum: qty * price });
+      }
+      const contractSum = lines.reduce((a, l) => a + l.sum, 0);
+      const budget = Math.round(contractSum * between(0.9, 1.08) / 1e4) * 1e4;
+      const costForecast = Math.round(contractSum * (slip > planDur * 0.15 ? between(1.04, 1.18) : between(0.97, 1.04)));
+      const paid = Math.round(costForecast * Math.min(1, progress / 100) * between(0.85, 1.0));
+      projects.push({
+        id: 'PRJ-' + String(pi++).padStart(3, '0'), object: o.id, business: o.business, region: o.region, direction: dir,
+        type: pick(projectTypes[dir]), contractor: ctr.id, manager: pick(byRole('Руководитель проектов')).id,
+        supervisor: pick(byRole('Технадзор')).id,
+        planStart: iso(planStart), planEnd: iso(planEnd), factEnd: iso(factEnd), done, progress,
+        budget, costForecast, paid, lines, contract1C: `ДГ-${int(1000, 9999)}/${planStart.getFullYear() % 100}`,
+      });
+    }
+  }
+
+  // Замечания и приёмки
+  const defectCats = [
+    ['crack', 'Трещина в стяжке / штукатурке'], ['leak', 'Протечка'], ['wire', 'Открытая проводка / не закреплён кабель'],
+    ['paint', 'Дефект окраски'], ['tile', 'Неровная укладка плитки'], ['door', 'Дверь не закрывается / зазоры'],
+    ['vent', 'Не смонтирована решётка вентиляции'], ['fire', 'Нет маркировки пожарного оборудования'], ['debris', 'Строительный мусор не вывезен'],
+  ];
+  const defects = [];
+  const acceptances = [];
+  let di = 1, ai = 1;
+  for (const p of projects) {
+    const ctr = contractors.find((c) => c.id === p.contractor);
+    const stages = p.done ? ['Скрытые работы', 'Промежуточная', 'Финальная'] : p.progress > 55 ? ['Скрытые работы', 'Промежуточная'] : p.progress > 20 ? ['Скрытые работы'] : [];
+    const ps = new Date(p.planStart), pe = new Date(p.factEnd);
+    stages.forEach((st, idx) => {
+      const date = addDays(ps, Math.round(((pe - ps) / day) * (idx + 1) / (stages.length + (p.done ? 0 : 1))));
+      const nDef = Math.round(between(0, 6) * ctr.defectK);
+      const result = nDef === 0 ? 'Принято' : nDef < 4 ? 'Принято с замечаниями' : 'Не принято';
+      const acc = { id: 'ACC-' + String(ai++).padStart(4, '0'), project: p.id, stage: st, date: iso(date), result, inspector: p.supervisor, photos: int(3, 6), defects: [] };
+      for (let d = 0; d < nDef; d++) {
+        const [cat, title] = pick(defectCats);
+        const created = addDays(date, int(0, 1));
+        const due = addDays(created, int(5, 21));
+        const r = rnd();
+        let status, closed = null;
+        if (due < TODAY && r < 0.86) { status = 'Устранено'; closed = iso(addDays(created, int(2, Math.max(3, Math.round((due - created) / day * 1.4))))); }
+        else if (due < TODAY) status = 'Просрочено';
+        else status = r < 0.5 ? 'В работе' : 'Открыто';
+        const def = {
+          id: 'DEF-' + String(di++).padStart(4, '0'), project: p.id, object: p.object, contractor: p.contractor, acceptance: acc.id,
+          cat, title, severity: pick(['Критичное', 'Значительное', 'Значительное', 'Малозначительное', 'Малозначительное']),
+          created: iso(created), due: iso(due), closed, status, author: p.supervisor,
+          location: pick(['Торговый зал', 'Склад', 'Венткамера', 'Кровля', 'Санузел', 'Входная группа', 'Коридор 2 эт.', 'Электрощитовая', 'Рампа']),
+          photos: closed ? 2 : 1,
+        };
+        defects.push(def);
+        acc.defects.push(def.id);
+      }
+      acceptances.push(acc);
+    });
+  }
+
+  // Эксплуатационные тикеты (как из Трекера)
+  const ticketCats = [['Климат и вентиляция', 24], ['Электрика', 8], ['Сантехника', 12], ['Двери и ворота', 24], ['Уборка и вывоз', 48], ['Холодильное оборудование', 4], ['Кровля и фасад', 72], ['Пожарная безопасность', 8]];
+  const tickets = [];
+  let ti = 4100;
+  for (const o of objects.filter((x) => x.status === 'В эксплуатации')) {
+    const intensity = (o.business === 'darkstores' ? 2.6 : o.business === 'retail' ? 2.0 : o.business === 'logistics' ? 0.35 : 0.8) * (o.area / 1000) ** 0.6;
+    const n = Math.round(intensity * between(5, 11));
+    const eng = byRole('Инженер эксплуатации');
+    for (let k = 0; k < n; k++) {
+      const [cat, sla] = pick(ticketCats);
+      const created = addDays(TODAY, -int(0, 90));
+      const assignee = rnd() < 0.7 ? o.opsEngineer : pick(eng).id;
+      const q = { lebedev: 0.8, kozlov: 1.25, novikova: 0.7, egorov: 1.0, fedorova: 0.9 }[assignee] || 1;
+      const resolveH = sla * between(0.15, 1.25) * q;
+      const resolvedAt = new Date(created.getTime() + resolveH * 36e5);
+      const resolved = resolvedAt < TODAY && rnd() < 0.93;
+      tickets.push({
+        key: 'EXPL-' + ti++, object: o.id, business: o.business, region: o.region, category: cat,
+        priority: pick(['Блокер', 'Критичный', 'Средний', 'Средний', 'Средний', 'Низкий']),
+        status: resolved ? 'Закрыт' : pick(['Открыт', 'В работе', 'В работе', 'Ждёт подрядчика']),
+        assignee, created: iso(created), resolved: resolved ? iso(resolvedAt) : null,
+        slaH: sla, hours: resolved ? Math.round(resolveH) : Math.round((TODAY - created) / 36e5),
+        cost: rnd() < 0.4 ? Math.round(between(3, 180)) * 1000 : 0,
+        summary: pick({ 'Климат и вентиляция': ['Не работает кондиционер', 'Шумит приточка', 'Жарко в зале'], 'Электрика': ['Не горит освещение', 'Выбивает автомат', 'Не работает розетка'], 'Сантехника': ['Течёт кран', 'Засор', 'Нет горячей воды'], 'Двери и ворота': ['Не открываются ворота', 'Сломан доводчик', 'Заедает замок'], 'Уборка и вывоз': ['Вывоз мусора', 'Генуборка', 'Уборка снега'], 'Холодильное оборудование': ['Камера не держит температуру', 'Течь хладагента'], 'Кровля и фасад': ['Протечка кровли', 'Отслоение облицовки'], 'Пожарная безопасность': ['Сработка АПС', 'Перезарядка огнетушителей'] }[cat]),
+      });
+    }
+  }
+
+  window.DB = { TODAY: iso(TODAY), businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets };
+})();
+</script>
+  <script>
+(function () {
+  const D = window.DB;
+  const $ = (s) => document.querySelector(s);
+  const idx = (arr, k = 'id') => Object.fromEntries(arr.map((x) => [x[k], x]));
+  const OBJ = idx(D.objects), PRJ = idx(D.projects), PPL = idx(D.people), CTR = idx(D.contractors),
+    WRK = idx(D.works), REG = idx(D.regions), BUS = idx(D.businesses), DIR = idx(D.directions), ACC = idx(D.acceptances), DEF = idx(D.defects);
+  const state = { business: '', direction: '', region: '', compare: new Set(), sort: {}, defStatus: '', defCtr: '', q: '', ticketCat: '' };
+
+  // ---------- форматирование ----------
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
+  const mln = (n) => (n / 1e6).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млн ₽';
+  const rub = (n) => fmt(n) + ' ₽';
+  const pct = (x, d = 1) => (x > 0 ? '+' : '') + (x * 100).toFixed(d).replace('.', ',') + '%';
+  const pct0 = (x) => Math.round(x * 100) + '%';
+  const days = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
+  const dt = (s) => (s ? new Date(s).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—');
+  const sum = (a, f) => a.reduce((s, x) => s + (typeof f === 'function' ? f(x) : x[f]), 0);
+  const median = (arr) => { const s = [...arr].sort((a, b) => a - b); const m = s.length >> 1; return !s.length ? 0 : s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const quant = (arr, q) => { const s = [...arr].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(q * s.length))] : 0; };
+  const src = (k) => `<span class="src ${{ '1С': 's1c', 'ФИН': 'sfin', 'ТРЕКЕР': 'sst', 'HUB': 'shub' }[k]}">${k}</span>`;
+  const pill = (t, c) => `<span class="pill p-${c}">${esc(t)}</span>`;
+  const sev = (x, warn, bad) => (x >= bad ? 'bad' : x >= warn ? 'warn' : 'good');
+  const person = (id) => (PPL[id] ? `<a href="#/person/${id}">${esc(PPL[id].name)}</a>` : '—');
+  const objLink = (id) => `<a href="#/object/${id}">${esc(OBJ[id].name)}</a>`;
+  const statusPill = (s) => pill(s, { 'Устранено': 'good', 'Принято': 'good', 'Закрыт': 'good', 'В работе': 'acc', 'Открыто': 'neutral', 'Открыт': 'neutral', 'Ждёт подрядчика': 'warn', 'Принято с замечаниями': 'warn', 'Просрочено': 'bad', 'Не принято': 'bad' }[s] || 'neutral');
+  const deltaDays = (p) => days(p.planEnd, p.factEnd);
+  const projDelta = (p) => (p.costForecast - p.budget) / p.budget;
+  const perM2 = (p) => p.costForecast / OBJ[p.object].area;
+
+  // ---------- фильтры ----------
+  const okB = (x) => !state.business || x.business === state.business;
+  const okR = (x) => !state.region || x.region === state.region;
+  const fObjects = () => D.objects.filter((o) => okB(o) && okR(o));
+  const fProjects = () => D.projects.filter((p) => okB(p) && okR(p) && (!state.direction || p.direction === state.direction));
+  const fDefects = () => { const ps = new Set(fProjects().map((p) => p.id)); return D.defects.filter((d) => ps.has(d.project)); };
+  const fAcc = () => { const ps = new Set(fProjects().map((p) => p.id)); return D.acceptances.filter((a) => ps.has(a.project)); };
+  const fTickets = () => D.tickets.filter((t) => okB(t) && okR(t));
+
+  function renderFilters() {
+    const sel = (key, label, items) => `<label>${label}<select data-filter="${key}"><option value="">Все</option>${items.map((i) => `<option value="${i.id}" ${state[key] === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>`;
+    $('#filters').innerHTML = sel('business', 'Бизнес', D.businesses) + sel('direction', 'Направление', D.directions) + sel('region', 'Регион', D.regions) +
+      `<span class="muted small" style="margin-left:auto">Направление фильтрует проекты, замечания и приёмки</span>`;
+  }
+
+  // ---------- бенчмарк: нормализация цен ----------
+  const BENCH = {};
+  for (const w of D.works) BENCH[w.id] = { work: w, lines: [] };
+  for (const p of D.projects) for (const l of p.lines) {
+    BENCH[l.work].lines.push({ ...l, project: p.id, object: p.object, region: p.region, contractor: p.contractor, business: p.business, norm: l.price / REG[p.region].k });
+  }
+  for (const b of Object.values(BENCH)) {
+    b.median = median(b.lines.map((l) => l.norm));
+    for (const l of b.lines) { l.idx = l.norm / b.median; l.over = l.idx > 1.25 ? (l.price - b.median * REG[l.region].k) * l.qty : 0; }
+  }
+  const idxPill = (i) => pill(i.toFixed(2).replace('.', ','), i > 1.25 ? 'bad' : i > 1.1 ? 'warn' : i < 0.85 ? 'acc' : 'good');
+
+  // ---------- «фото» (SVG-заглушки, имитация фотофиксации) ----------
+  function hash(str) { let h = 2166136261; for (const c of str) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return () => { h = Math.imul(h ^ (h >>> 13), 0x5bd1e995); h ^= h >>> 15; return (h >>> 0) / 4294967296; }; }
+  const photoCache = {};
+  function photo(kind, seed, label, fixed) {
+    const key = kind + seed + fixed;
+    if (photoCache[key]) return photoCache[key];
+    const r = hash(seed + kind);
+    const W = 400, H = 300;
+    const tone = 180 + Math.floor(r() * 50);
+    const wall = `rgb(${tone},${tone - 4},${tone - 12})`;
+    let g = `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${wall}"/><stop offset="1" stop-color="rgb(${tone - 40},${tone - 44},${tone - 50})"/></linearGradient>
+      <radialGradient id="v" cx=".5" cy=".5" r=".75"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></radialGradient></defs>
+      <rect width="${W}" height="${H}" fill="url(#g)"/>`;
+    for (let i = 0; i < 60; i++) g += `<circle cx="${r() * W}" cy="${r() * H}" r="${r() * 2}" fill="#000" opacity="${r() * 0.15}"/>`;
+    const fx = 90 + r() * 180, fy = 70 + r() * 120;
+    if (!fixed) {
+      if (kind === 'crack') { let d = `M${fx - 80} ${fy - 40}`; let x = fx - 80, y = fy - 40; for (let i = 0; i < 12; i++) { x += 10 + r() * 10; y += (r() - 0.35) * 22; d += ` L${x.toFixed(0)} ${y.toFixed(0)}`; } g += `<path d="${d}" stroke="#2a241e" stroke-width="3" fill="none"/><path d="${d}" stroke="#4a4038" stroke-width="7" fill="none" opacity=".25"/>`; }
+      if (kind === 'leak') g += `<ellipse cx="${fx}" cy="${fy}" rx="${70 + r() * 40}" ry="${45 + r() * 25}" fill="#7a5a32" opacity=".45"/><ellipse cx="${fx + 10}" cy="${fy + 8}" rx="40" ry="26" fill="#5c4020" opacity=".4"/><path d="M${fx} ${fy + 30} q4 40 0 70" stroke="#5c4020" stroke-width="5" opacity=".4" fill="none"/>`;
+      if (kind === 'wire') for (let i = 0; i < 3; i++) g += `<path d="M0 ${fy + i * 14} C ${W * 0.3} ${fy + 60 + i * 10}, ${W * 0.6} ${fy - 40}, ${W} ${fy + 30 + i * 12}" stroke="${['#222', '#c92a2a', '#1971c2'][i]}" stroke-width="6" fill="none"/>`;
+      if (kind === 'paint') for (let i = 0; i < 7; i++) g += `<rect x="${fx - 90 + r() * 140}" y="${fy - 60 + r() * 110}" width="${20 + r() * 60}" height="${12 + r() * 40}" fill="rgb(${tone + 30},${tone + 28},${tone + 20})" opacity=".8" transform="rotate(${r() * 20 - 10} ${fx} ${fy})"/>`;
+      if (kind === 'tile') { for (let x = 0; x < W; x += 60) for (let y = 150; y < H; y += 45) g += `<rect x="${x + (x === 180 && y === 195 ? 9 : 0)}" y="${y + (x === 180 && y === 195 ? -6 : 0)}" width="58" height="43" fill="#d9d4cc" stroke="#9a948a"/>`; }
+      if (kind === 'door') g += `<rect x="${fx - 60}" y="40" width="120" height="240" fill="#6d7b8a" stroke="#333" stroke-width="3"/><rect x="${fx - 60}" y="40" width="10" height="240" fill="#111" opacity=".8"/><circle cx="${fx + 40}" cy="170" r="6" fill="#ddd"/>`;
+      if (kind === 'vent') g += `<rect x="${fx - 70}" y="${fy - 40}" width="140" height="80" fill="#1b1b1b"/><path d="M${fx - 70} ${fy - 40} l20 -14 h140 l-20 14" fill="#555"/>`;
+      if (kind === 'fire') g += `<rect x="${fx - 18}" y="${fy - 20}" width="36" height="110" rx="14" fill="#c92a2a"/><rect x="${fx - 8}" y="${fy - 38}" width="16" height="20" fill="#333"/><rect x="${fx + 40}" y="${fy - 10}" width="70" height="40" fill="none" stroke="#c92a2a" stroke-dasharray="6 5" stroke-width="3"/>`;
+      if (kind === 'debris') for (let i = 0; i < 14; i++) { const x = r() * W, y = 170 + r() * 110; g += `<polygon points="${x},${y} ${x + 10 + r() * 30},${y + r() * 10} ${x + r() * 20},${y - 10 - r() * 20}" fill="rgb(${90 + r() * 80},${80 + r() * 60},${60 + r() * 50})"/>`; }
+      if (kind === 'site') { g += `<rect y="${H * 0.62}" width="${W}" height="${H * 0.38}" fill="#8f8a82"/>`; for (let i = 0; i < 5; i++) g += `<rect x="${30 + i * 85}" y="40" width="22" height="${H * 0.62 - 40}" fill="#a9a59d" stroke="#777"/>`; g += `<line x1="0" y1="40" x2="${W}" y2="40" stroke="#666" stroke-width="6"/>`; for (let i = 0; i < 6; i++) g += `<line x1="${W / 2}" y1="${H * 0.62}" x2="${i * 80}" y2="${H}" stroke="#7a756d"/>`; }
+      if (kind !== 'site') g += `<ellipse cx="${fx}" cy="${fy}" rx="105" ry="75" fill="none" stroke="#ff2d2d" stroke-width="4"/>`;
+    } else {
+      g += `<rect x="${fx - 80}" y="${fy - 50}" width="160" height="100" fill="${wall}" opacity=".6"/><circle cx="${W - 40}" cy="40" r="20" fill="#2b8a3e"/><path d="M${W - 50} 40 l7 8 l14 -16" stroke="#fff" stroke-width="4" fill="none"/>`;
+    }
+    g += `<rect width="${W}" height="${H}" fill="url(#v)"/><rect y="${H - 34}" width="${W}" height="34" fill="#000" opacity=".55"/>
+      <text x="10" y="${H - 13}" fill="#fff" font-size="13" font-family="Helvetica,Arial">${esc(label)}</text>`;
+    const uri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">${g}</svg>`);
+    return (photoCache[key] = uri);
+  }
+
+  // ---------- графики ----------
+  function hbar(items, { fmtV = fmt, width = 600, color = '#3b5bdb' } = {}) {
+    if (!items.length) return '<div class="muted">Нет данных</div>';
+    const lw = 250, rh = 24, max = Math.max(...items.map((i) => Math.abs(i.value))) || 1, bw = width - lw - 90;
+    const neg = items.some((i) => i.value < 0);
+    const x0 = neg ? lw + bw / 2 : lw, scale = neg ? bw / 2 / max : bw / max;
+    let s = `<svg viewBox="0 0 ${width} ${items.length * rh + 6}" width="100%">`;
+    items.forEach((it, i) => {
+      const y = i * rh + 4, w = Math.abs(it.value) * scale, x = it.value < 0 ? x0 - w : x0;
+      s += `<g ${it.href ? `data-href="${it.href}" style="cursor:pointer"` : ''}><title>${esc(it.label)}: ${esc(fmtV(it.value))}</title>
+        <text x="${lw - 8}" y="${y + 13}" font-size="12" text-anchor="end" fill="#1d2433">${esc(it.label.length > 28 ? it.label.slice(0, 27) + '…' : it.label)}</text>
+        <rect x="${x}" y="${y}" width="${Math.max(1, w)}" height="${rh - 8}" rx="3" fill="${it.color || color}"/>
+        <text x="${(it.value < 0 ? x0 : x + w) + 6}" y="${y + 13}" font-size="12" fill="#6b7385">${esc(fmtV(it.value))}</text></g>`;
+    });
+    if (neg) s += `<line x1="${x0}" x2="${x0}" y1="0" y2="${items.length * rh + 4}" stroke="#aab"/>`;
+    return s + '</svg>';
+  }
+
+  function gantt(prs, { W = 960 } = {}) {
+    if (!prs.length) return '';
+    const dates = prs.flatMap((p) => [p.planStart, p.planEnd, p.factEnd]).map((d) => new Date(d).getTime());
+    const t0 = Math.min(...dates) - 7 * 864e5, t1 = Math.max(...dates, new Date(D.TODAY).getTime()) + 7 * 864e5;
+    const lw = W < 800 ? 230 : 270, rh = 30, X = (d) => lw + ((new Date(d).getTime() - t0) / (t1 - t0)) * (W - lw - 10);
+    let s = `<svg viewBox="0 0 ${W} ${prs.length * rh + 30}" width="100%">`;
+    // месяцы
+    const m = new Date(t0); m.setDate(1); m.setMonth(m.getMonth() + 1);
+    while (m.getTime() < t1) { const x = X(m); s += `<line x1="${x}" x2="${x}" y1="18" y2="${prs.length * rh + 22}" stroke="#eef0f4"/>`; if (m.getMonth() % (prs.length > 0 && (t1 - t0) > 400 * 864e5 ? 3 : 1) === 0) s += `<text x="${x + 3}" y="12" font-size="10" fill="#8a91a3">${m.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' })}</text>`; m.setMonth(m.getMonth() + 1); }
+    prs.forEach((p, i) => {
+      const y = i * rh + 24, late = deltaDays(p);
+      const c = late > 30 ? '#c92a2a' : late > 7 ? '#e67700' : '#2b8a3e';
+      s += `<g data-href="#/object/${p.object}" style="cursor:pointer"><title>${esc(p.id)}: план до ${dt(p.planEnd)}, ${p.done ? 'факт' : 'прогноз'} ${dt(p.factEnd)} (${late > 0 ? '+' : ''}${late} дн)</title>
+        <text x="${lw - 8}" y="${y + 13}" font-size="11.5" text-anchor="end">${esc(p.id)} · ${esc(OBJ[p.object].type)} ${esc(REG[p.region].name.split(' ')[0])}</text>
+        <rect x="${X(p.planStart)}" y="${y}" width="${X(p.planEnd) - X(p.planStart)}" height="8" rx="2" fill="#c5cdee"/>
+        <rect x="${X(p.planStart)}" y="${y + 10}" width="${X(p.factEnd) - X(p.planStart)}" height="8" rx="2" fill="${c}" opacity="${p.done ? 1 : 0.55}"/></g>`;
+    });
+    const tx = X(D.TODAY);
+    s += `<line x1="${tx}" x2="${tx}" y1="16" y2="${prs.length * rh + 24}" stroke="#3b5bdb" stroke-dasharray="4 3"/><text x="${tx + 3}" y="${prs.length * rh + 28}" font-size="10" fill="#3b5bdb">сегодня</text>`;
+    return s + `</svg><div class="legend"><span><i style="background:#c5cdee"></i>план</span><span><i style="background:#2b8a3e"></i>факт / прогноз в срок</span><span><i style="background:#e67700"></i>отставание 1–4 нед</span><span><i style="background:#c92a2a"></i>отставание &gt; 30 дн</span><span>бледная полоса — прогноз</span></div>`;
+  }
+
+  function dotStrip(lines, med) {
+    const W = 900, H = 120, lo = 0.6, hi = Math.max(1.8, ...lines.map((l) => l.idx)) + 0.05;
+    const X = (v) => 40 + ((v - lo) / (hi - lo)) * (W - 60);
+    let s = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+    s += `<rect x="${X(1.25)}" y="10" width="${X(hi) - X(1.25)}" height="${H - 40}" fill="#fdecec"/>`;
+    for (let v = 0.6; v <= hi; v += 0.2) s += `<line x1="${X(v)}" x2="${X(v)}" y1="10" y2="${H - 30}" stroke="#eef0f4"/><text x="${X(v)}" y="${H - 14}" font-size="10" text-anchor="middle" fill="#8a91a3">${v.toFixed(1).replace('.', ',')}</text>`;
+    s += `<line x1="${X(1)}" x2="${X(1)}" y1="6" y2="${H - 28}" stroke="#1d2433" stroke-width="2"/><text x="${X(1) + 4}" y="18" font-size="11">медиана ${rub(med)}</text>`;
+    const r = hash('dots');
+    for (const l of lines) s += `<circle data-href="#/object/${l.object}" style="cursor:pointer" cx="${X(l.idx)}" cy="${22 + r() * (H - 60)}" r="6" fill="${l.idx > 1.25 ? '#c92a2a' : l.idx > 1.1 ? '#e67700' : '#3b5bdb'}" opacity=".75"><title>${esc(OBJ[l.object].name)} · ${esc(CTR[l.contractor].name)}: ${rub(l.price)} (индекс ${l.idx.toFixed(2)})</title></circle>`;
+    return s + `</svg><div class="legend">Индекс = цена за ед. с поправкой на регион / медиана по виду работ. Красная зона — дороже медианы более чем на 25%.</div>`;
+  }
+
+  // ---------- таблица с сортировкой ----------
+  function tbl(id, cols, rows, { href, empty = 'Нет данных' } = {}) {
+    const st = state.sort[id];
+    if (st) { const c = cols[st.col]; rows = [...rows].sort((a, b) => { const va = c.v(a), vb = c.v(b); return (va > vb ? 1 : va < vb ? -1 : 0) * st.dir; }); }
+    if (!rows.length) return `<div class="muted" style="padding:10px">${empty}</div>`;
+    return `<div class="tbl-wrap"><table><thead><tr>${cols.map((c, i) => `<th class="${c.v ? 'sortable' : ''} ${c.num ? 'num' : ''}" ${c.v ? `data-sort="${id}:${i}"` : ''}>${c.h}${st && st.col === i ? (st.dir > 0 ? ' ↑' : ' ↓') : ''}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr ${href ? `class="click" data-href="${href(r)}"` : ''}>${cols.map((c) => `<td class="${c.num ? 'num' : ''}">${c.f(r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+  const kpi = (l, v, d = '') => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div>${d ? `<div class="d">${d}</div>` : ''}</div>`;
+
+  // ---------- агрегаты ----------
+  function ticketStats(ts) {
+    const closed = ts.filter((t) => t.resolved);
+    return { n: ts.length, open: ts.length - closed.length, sla: closed.length ? closed.filter((t) => t.hours <= t.slaH).length / closed.length : 1, avgH: closed.length ? sum(closed, 'hours') / closed.length : 0, cost: sum(ts, 'cost') };
+  }
+
+  // ================= VIEWS =================
+  const V = {};
+
+  V.overview = () => {
+    const objs = fObjects(), prs = fProjects(), defs = fDefects(), tks = fTickets();
+    const active = prs.filter((p) => !p.done);
+    const budget = sum(active, 'budget'), fc = sum(active, 'costForecast');
+    const late = active.filter((p) => deltaDays(p) > 14).length;
+    const open = defs.filter((d) => d.status !== 'Устранено'), overdue = defs.filter((d) => d.status === 'Просрочено');
+    const ts = ticketStats(tks);
+    const area = sum(objs, 'area');
+    const regionRows = D.regions.map((r) => {
+      const o = objs.filter((x) => x.region === r.id); if (!o.length) return null;
+      const p = prs.filter((x) => x.region === r.id), pa = p.filter((x) => !x.done);
+      const capex = p.filter((x) => x.direction !== 'ops');
+      const t = ticketStats(tks.filter((x) => x.region === r.id));
+      const opsArea = sum(o.filter((x) => x.status === 'В эксплуатации'), 'area');
+      return { r, objs: o.length, area: sum(o, 'area'), active: pa.length, budget: sum(pa, 'budget'), fc: sum(pa, 'costForecast'),
+        m2: capex.length ? median(capex.map(perM2)) : 0, late: pa.filter((x) => deltaDays(x) > 14).length,
+        open: defs.filter((d) => p.some((x) => x.id === d.project) && d.status !== 'Устранено').length,
+        overdue: defs.filter((d) => p.some((x) => x.id === d.project) && d.status === 'Просрочено').length,
+        tPer: opsArea ? t.n / 3 / (opsArea / 1000) : 0, sla: t.sla, tn: t.n };
+    }).filter(Boolean);
+    const topOver = [...active].sort((a, b) => projDelta(b) - projDelta(a)).slice(0, 8);
+    const byCat = {}; tks.forEach((t) => (byCat[t.category] = (byCat[t.category] || 0) + 1));
+    return `<h1>Обзор портфеля</h1><div class="sub">${objs.length} объектов · ${fmt(area)} м² · ${BUS[state.business]?.name || 'все бизнесы'} · ${REG[state.region]?.name || 'все регионы'}</div>
+    <div class="kpis">
+      ${kpi('Проектов в работе', active.length, `<span class="${late ? 'warn' : 'good'}">${late} отстают &gt; 2 нед</span>`)}
+      ${kpi(`Бюджет активных ${src('ФИН')}`, mln(budget))}
+      ${kpi(`Прогноз затрат ${src('1С')}`, mln(fc), `<span class="${fc > budget ? 'bad' : 'good'}">${pct(budget ? fc / budget - 1 : 0)} к бюджету</span>`)}
+      ${kpi(`Открытых замечаний ${src('HUB')}`, open.length, `<span class="${overdue.length ? 'bad' : 'good'}">${overdue.length} просрочено</span>`)}
+      ${kpi(`Тикетов за 90 дн ${src('ТРЕКЕР')}`, ts.n, `${ts.open} открыто`)}
+      ${kpi('SLA эксплуатации', pct0(ts.sla), `<span class="${ts.sla < 0.8 ? 'bad' : ts.sla < 0.9 ? 'warn' : 'good'}">ср. ${Math.round(ts.avgH)} ч на тикет</span>`)}
+    </div>
+    <div class="card" style="margin-bottom:14px"><h2>Регионы</h2>${tbl('regions', [
+      { h: 'Регион', v: (x) => x.r.name, f: (x) => `<a href="#" data-region="${x.r.id}">${esc(x.r.name)}</a>` },
+      { h: 'Объектов', num: 1, v: (x) => x.objs, f: (x) => x.objs },
+      { h: 'Площадь, м²', num: 1, v: (x) => x.area, f: (x) => fmt(x.area) },
+      { h: 'Проектов в работе', num: 1, v: (x) => x.active, f: (x) => x.active + (x.late ? ` <span class="warn small">(${x.late} отст.)</span>` : '') },
+      { h: 'Бюджет', num: 1, v: (x) => x.budget, f: (x) => mln(x.budget) },
+      { h: 'Прогноз', num: 1, v: (x) => x.fc, f: (x) => mln(x.fc) },
+      { h: 'Δ', num: 1, v: (x) => (x.budget ? x.fc / x.budget - 1 : 0), f: (x) => { const d = x.budget ? x.fc / x.budget - 1 : 0; return `<span class="${sev(d, 0.03, 0.08)}">${pct(d)}</span>`; } },
+      { h: 'Медиана ₽/м² проектов', num: 1, v: (x) => x.m2, f: (x) => (x.m2 ? rub(x.m2) : '—') },
+      { h: 'Замечания (просроч.)', num: 1, v: (x) => x.open, f: (x) => `${x.open} ${x.overdue ? `<span class="bad">(${x.overdue})</span>` : ''}` },
+      { h: 'Тикетов / 1000 м² / мес', num: 1, v: (x) => x.tPer, f: (x) => x.tPer.toFixed(1).replace('.', ',') },
+      { h: 'SLA', num: 1, v: (x) => x.sla, f: (x) => (x.tn ? `<span class="${sev(1 - x.sla, 0.1, 0.2)}">${pct0(x.sla)}</span>` : '—') },
+    ], regionRows)}</div>
+    <div class="grid g2">
+      <div class="card"><h2>Топ перерасхода среди активных проектов</h2>${hbar(topOver.map((p) => ({ label: `${p.id} ${OBJ[p.object].type} ${REG[p.region].name.split(' ')[0]}`, value: projDelta(p), color: projDelta(p) > 0.05 ? '#c92a2a' : projDelta(p) > 0 ? '#e67700' : '#2b8a3e', href: `#/object/${p.object}` })), { fmtV: (v) => pct(v) })}</div>
+      <div class="card"><h2>Эксплуатационные тикеты по категориям, 90 дн</h2>${hbar(Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v, href: '#/ops' })))}</div>
+    </div>
+    <div class="card" style="margin-top:14px"><h2>Сроки активных проектов</h2>${gantt([...active].sort((a, b) => a.planStart.localeCompare(b.planStart)).slice(0, 18))}<div class="muted small">Показаны первые 18 по дате старта · все проекты — в разделе <a href="#/projects">Проекты</a></div></div>`;
+  };
+
+  V.objects = () => {
+    let objs = fObjects();
+    if (state.q) objs = objs.filter((o) => (o.name + o.address + o.id).toLowerCase().includes(state.q.toLowerCase()));
+    const rows = objs.map((o) => {
+      const ps = D.projects.filter((p) => p.object === o.id), defs = D.defects.filter((d) => d.object === o.id && d.status !== 'Устранено');
+      const ts = D.tickets.filter((t) => t.object === o.id);
+      return { o, active: ps.filter((p) => !p.done).length, fc: sum(ps, 'costForecast'), defs: defs.length, overdue: defs.filter((d) => d.status === 'Просрочено').length, ts: ts.length, tsOpen: ts.filter((t) => !t.resolved).length };
+    });
+    return `<h1>Объекты</h1><div class="sub">Единый реестр: один ID объекта сопоставлен с ключами в 1С, финмодели и Трекере</div>
+    <div style="margin-bottom:12px"><input type="search" id="q" placeholder="Поиск по названию, адресу, ID…" value="${esc(state.q)}" style="width:340px"/></div>
+    <div class="card">${tbl('objects', [
+      { h: 'ID', v: (x) => x.o.id, f: (x) => `<span class="muted">${x.o.id}</span>` },
+      { h: 'Объект', v: (x) => x.o.name, f: (x) => `<b>${esc(x.o.name)}</b><div class="muted small">${esc(x.o.address)}</div>` },
+      { h: 'Бизнес', v: (x) => x.o.business, f: (x) => BUS[x.o.business].name },
+      { h: 'Регион', v: (x) => REG[x.o.region].name, f: (x) => REG[x.o.region].name },
+      { h: 'Площадь, м²', num: 1, v: (x) => x.o.area, f: (x) => fmt(x.o.area) },
+      { h: 'Статус', v: (x) => x.o.status, f: (x) => pill(x.o.status, x.o.status === 'В эксплуатации' ? 'good' : x.o.status === 'Стройка' ? 'acc' : 'warn') },
+      { h: 'Проектов в работе', num: 1, v: (x) => x.active, f: (x) => x.active || '—' },
+      { h: 'Затраты, прогноз', num: 1, v: (x) => x.fc, f: (x) => (x.fc ? mln(x.fc) : '—') },
+      { h: 'Замечания', num: 1, v: (x) => x.defs, f: (x) => (x.defs ? `${x.defs}${x.overdue ? ` <span class="bad">(${x.overdue} просроч.)</span>` : ''}` : '—') },
+      { h: 'Тикеты 90 дн', num: 1, v: (x) => x.ts, f: (x) => (x.ts ? `${x.ts} <span class="muted">/ ${x.tsOpen} откр.</span>` : '—') },
+      { h: 'Инженер', v: (x) => PPL[x.o.opsEngineer].name, f: (x) => esc(PPL[x.o.opsEngineer].name) },
+    ], rows, { href: (x) => `#/object/${x.o.id}` })}</div>`;
+  };
+
+  const defectCard = (d) => `<div class="ph" data-defect="${d.id}"><img src="${photo(d.cat, d.id, `${d.location} · ${dt(d.created)}`, false)}" alt=""/><div class="cap"><b>${esc(d.title)}</b>${statusPill(d.status)} ${pill(d.severity, d.severity === 'Критичное' ? 'bad' : d.severity === 'Значительное' ? 'warn' : 'neutral')}<div class="muted" style="margin-top:4px">${esc(CTR[d.contractor].name)} · срок ${dt(d.due)}</div><div class="muted">${esc(OBJ[d.object].name)}</div></div></div>`;
+  const accPhotos = (a) => Array.from({ length: a.photos }, (_, i) => photo('site', a.id + i, `${a.stage} · ${dt(a.date)}`, false));
+
+  function linesTable(p) {
+    return tbl('lines-' + p.id, [
+      { h: 'КСР', v: (l) => l.work, f: (l) => `<span class="muted">${l.work}</span>` },
+      { h: 'Вид работ', v: (l) => WRK[l.work].name, f: (l) => `<a href="#/benchmark/${l.work}">${esc(WRK[l.work].name)}</a>` },
+      { h: 'Объём', num: 1, v: (l) => l.qty, f: (l) => `${fmt(l.qty)} ${WRK[l.work].unit}` },
+      { h: 'Цена за ед.', num: 1, v: (l) => l.price, f: (l) => rub(l.price) },
+      { h: 'Сумма', num: 1, v: (l) => l.sum, f: (l) => rub(l.sum) },
+      { h: 'Индекс к рынку', num: 1, v: (l) => BENCH[l.work].lines.find((x) => x.project === p.id && x.work === l.work).idx, f: (l) => idxPill(BENCH[l.work].lines.find((x) => x.project === p.id && x.work === l.work).idx) },
+    ], p.lines);
+  }
+
+  V.object = (id) => {
+    const o = OBJ[id]; if (!o) return '<h1>Объект не найден</h1>';
+    const ps = D.projects.filter((p) => p.object === id);
+    const defs = D.defects.filter((d) => d.object === id);
+    const accs = D.acceptances.filter((a) => ps.some((p) => p.id === a.project));
+    const ts = D.tickets.filter((t) => t.object === id).sort((a, b) => b.created.localeCompare(a.created));
+    const st = ticketStats(ts);
+    const leaseDays = days(D.TODAY, o.lease.end);
+    return `<div class="crumbs"><a href="#/objects">Объекты</a> / ${REG[o.region].name} / ${o.id}</div>
+    <h1>${esc(o.name)}</h1><div class="sub">${esc(o.address)} · ${BUS[o.business].name} · ${pill(o.status, o.status === 'В эксплуатации' ? 'good' : 'acc')}</div>
+    <div class="kpis">
+      ${kpi('Площадь', fmt(o.area) + ' м²')}
+      ${kpi(`Аренда, ₽/м²/мес ${src('1С')}`, fmt(o.lease.rate), `<span class="${leaseDays < 0 ? 'bad' : leaseDays < 180 ? 'warn' : 'muted'}">договор до ${dt(o.lease.end)}${leaseDays < 0 ? ' — истёк' : ''}</span>`)}
+      ${kpi('Проекты', ps.length, `${ps.filter((p) => !p.done).length} в работе`)}
+      ${kpi(`Затраты ${src('1С')}`, mln(sum(ps, 'costForecast')), `оплачено ${mln(sum(ps, 'paid'))}`)}
+      ${kpi(`Замечания ${src('HUB')}`, defs.filter((d) => d.status !== 'Устранено').length + ' откр.', `всего ${defs.length}, просрочено <span class="bad">${defs.filter((d) => d.status === 'Просрочено').length}</span>`)}
+      ${kpi(`Тикеты 90 дн ${src('ТРЕКЕР')}`, st.n, st.n ? `SLA ${pct0(st.sla)} · ${st.open} откр.` : '')}
+    </div>
+    <div class="grid g2" style="margin-bottom:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)">
+      <div class="card"><h2>Паспорт объекта</h2><div class="kv">
+        <div>ID</div><div>${o.id}</div><div>Тип</div><div>${o.type}</div><div>Регион</div><div>${REG[o.region].name}</div>
+        <div>Арендодатель</div><div>${esc(o.lease.landlord)}</div><div>Ставка</div><div>${rub(o.lease.rate)} /м²/мес · ${mln(o.lease.rate * o.area * 12)} в год</div>
+        <div>Инженер эксплуатации</div><div>${person(o.opsEngineer)}</div><div>Менеджер аренды</div><div>${person(o.leaseManager)}</div>
+      </div></div>
+      <div class="card"><h2>Проекты на объекте</h2>${ps.length ? gantt(ps, { W: 620 }) : '<div class="muted">Проектов нет</div>'}</div>
+    </div>
+    ${ps.map((p) => `<div class="card" style="margin-bottom:14px">
+      <h2>${p.id} · ${esc(p.type)} ${pill(DIR[p.direction].name, 'acc')} ${p.done ? pill('Завершён', 'good') : pill(`Готовность ${p.progress}%`, 'neutral')}</h2>
+      <div class="kpis">
+        ${kpi(`Бюджет ${src('ФИН')}`, mln(p.budget))}
+        ${kpi(`Прогноз ${src('1С')}`, mln(p.costForecast), `<span class="${sev(projDelta(p), 0.03, 0.08)}">${pct(projDelta(p))}</span>`)}
+        ${kpi('Удельная стоимость', rub(perM2(p)) + '/м²')}
+        ${kpi('Срок', `${dt(p.planEnd)} → ${dt(p.factEnd)}`, `<span class="${sev(deltaDays(p), 7, 30)}">${deltaDays(p) > 0 ? '+' : ''}${deltaDays(p)} дн</span>`)}
+        ${kpi('Подрядчик', esc(CTR[p.contractor].name), `договор ${p.contract1C} ${src('1С')}`)}
+        ${kpi('Команда', person(p.manager), `технадзор: ${person(p.supervisor)}`)}
+      </div>
+      <h2 style="margin-top:6px">Работы по КС-2 ${src('1С')} → классификатор</h2>${linesTable(p)}
+      <div style="margin-top:10px"><a href="#/compare/${similar(p).map((x) => x.id).join(',')}">Сравнить с похожими проектами →</a></div>
+    </div>`).join('')}
+    <div class="card" style="margin-bottom:14px"><h2>Замечания подрядчикам ${src('HUB')}</h2>${defs.length ? `<div class="photos">${defs.map(defectCard).join('')}</div>` : '<div class="muted">Замечаний нет</div>'}</div>
+    <div class="card" style="margin-bottom:14px"><h2>Приёмки ${src('HUB')}</h2>${accs.length ? accs.map((a) => `<div style="display:flex;gap:14px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f1f4">
+      <div style="width:240px"><b>${a.stage}</b> · ${dt(a.date)}<div>${statusPill(a.result)} <span class="muted small">${a.defects.length} замеч. · ${esc(PPL[a.inspector].name)}</span></div></div>
+      <div class="strip">${accPhotos(a).map((u) => `<img src="${u}" data-photo="1"/>`).join('')}</div></div>`).join('') : '<div class="muted">Приёмок ещё не было</div>'}</div>
+    <div class="card"><h2>Эксплуатационные тикеты ${src('ТРЕКЕР')}</h2>${ticketsTable('obj-t', ts)}</div>`;
+  };
+
+  function similar(p) {
+    const o = OBJ[p.object];
+    const cand = D.projects.filter((x) => x.id !== p.id && x.business === p.business && x.direction === p.direction)
+      .sort((a, b) => Math.abs(Math.log(OBJ[a.object].area / o.area)) - Math.abs(Math.log(OBJ[b.object].area / o.area)));
+    return [p, ...cand.slice(0, 3)];
+  }
+
+  function ticketsTable(id, ts) {
+    return tbl(id, [
+      { h: 'Ключ', v: (t) => t.key, f: (t) => `<span class="muted">${t.key}</span>` },
+      { h: 'Тема', v: (t) => t.summary, f: (t) => esc(t.summary) },
+      { h: 'Объект', v: (t) => OBJ[t.object].name, f: (t) => objLink(t.object) },
+      { h: 'Категория', v: (t) => t.category, f: (t) => esc(t.category) },
+      { h: 'Приоритет', v: (t) => t.priority, f: (t) => pill(t.priority, t.priority === 'Блокер' ? 'bad' : t.priority === 'Критичный' ? 'warn' : 'neutral') },
+      { h: 'Статус', v: (t) => t.status, f: (t) => statusPill(t.status) },
+      { h: 'Исполнитель', v: (t) => PPL[t.assignee].name, f: (t) => person(t.assignee) },
+      { h: 'Создан', v: (t) => t.created, f: (t) => dt(t.created) },
+      { h: 'Часы / SLA', num: 1, v: (t) => t.hours / t.slaH, f: (t) => `<span class="${t.hours > t.slaH ? 'bad' : 'good'}">${t.hours} / ${t.slaH} ч</span>` },
+      { h: 'Затраты', num: 1, v: (t) => t.cost, f: (t) => (t.cost ? rub(t.cost) : '—') },
+    ], ts.slice(0, 200));
+  }
+
+  V.projects = () => {
+    const prs = fProjects();
+    const sel = state.compare;
+    return `<h1>Проекты</h1><div class="sub">Отметьте 2–5 проектов и сравните их по срокам, деньгам и удельным показателям</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+      <button class="btn primary" id="cmp" ${sel.size < 2 ? 'disabled' : ''}>Сравнить выбранные (${sel.size})</button>
+      <button class="btn" id="cmpclear" ${sel.size ? '' : 'disabled'}>Сбросить выбор</button>
+      <span class="muted small">Удельная стоимость = прогноз затрат / площадь объекта</span></div>
+    <div class="card">${tbl('projects', [
+      { h: '', f: (p) => `<input type="checkbox" data-cmp="${p.id}" ${sel.has(p.id) ? 'checked' : ''}/>` },
+      { h: 'Проект', v: (p) => p.id, f: (p) => `<a href="#/object/${p.object}">${p.id}</a><div class="muted small">${esc(p.type)}</div>` },
+      { h: 'Объект', v: (p) => OBJ[p.object].name, f: (p) => `${esc(OBJ[p.object].name)}<div class="muted small">${BUS[p.business].name} · ${fmt(OBJ[p.object].area)} м²</div>` },
+      { h: 'Направление', v: (p) => p.direction, f: (p) => DIR[p.direction].name },
+      { h: 'Подрядчик', v: (p) => CTR[p.contractor].name, f: (p) => esc(CTR[p.contractor].name) },
+      { h: 'РП', v: (p) => PPL[p.manager].name, f: (p) => person(p.manager) },
+      { h: 'Готовность', num: 1, v: (p) => p.progress, f: (p) => `<div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">${p.progress}%<div class="bar" style="width:60px"><i style="width:${p.progress}%"></i></div></div>` },
+      { h: 'Окончание: план → прогноз', v: (p) => p.factEnd, f: (p) => `${dt(p.planEnd)} → ${dt(p.factEnd)}` },
+      { h: 'Δ срока', num: 1, v: deltaDays, f: (p) => `<span class="${sev(deltaDays(p), 7, 30)}">${deltaDays(p) > 0 ? '+' : ''}${deltaDays(p)} дн</span>` },
+      { h: 'Бюджет', num: 1, v: (p) => p.budget, f: (p) => mln(p.budget) },
+      { h: 'Прогноз', num: 1, v: (p) => p.costForecast, f: (p) => mln(p.costForecast) },
+      { h: 'Δ бюджета', num: 1, v: projDelta, f: (p) => `<span class="${sev(projDelta(p), 0.03, 0.08)}">${pct(projDelta(p))}</span>` },
+      { h: '₽/м²', num: 1, v: perM2, f: (p) => rub(perM2(p)) },
+    ], prs)}</div>`;
+  };
+
+  V.compare = (ids) => {
+    const ps = (ids || '').split(',').map((i) => PRJ[i]).filter(Boolean);
+    if (ps.length < 2) return '<h1>Сравнение</h1><div class="muted">Выберите минимум 2 проекта в разделе <a href="#/projects">Проекты</a></div>';
+    const rows = [
+      ['Объект', (p) => objLink(p.object)], ['Бизнес / регион', (p) => `${BUS[p.business].name} · ${REG[p.region].name}`], ['Тип проекта', (p) => `${esc(p.type)} (${DIR[p.direction].name})`],
+      ['Площадь, м²', (p) => fmt(OBJ[p.object].area)], ['Подрядчик', (p) => esc(CTR[p.contractor].name)], ['РП', (p) => person(p.manager)],
+      ['Плановая длительность', (p) => days(p.planStart, p.planEnd) + ' дн', (p) => days(p.planStart, p.planEnd)],
+      ['Факт / прогноз длительности', (p) => days(p.planStart, p.factEnd) + ' дн', (p) => days(p.planStart, p.factEnd)],
+      ['Отклонение срока', (p) => `${deltaDays(p) > 0 ? '+' : ''}${deltaDays(p)} дн`, deltaDays],
+      [`Бюджет ${src('ФИН')}`, (p) => mln(p.budget)], [`Прогноз затрат ${src('1С')}`, (p) => mln(p.costForecast)],
+      ['Отклонение бюджета', (p) => pct(projDelta(p)), projDelta], ['Удельная стоимость, ₽/м²', (p) => rub(perM2(p)), perM2],
+      ['Оплачено', (p) => mln(p.paid)],
+      [`Замечаний ${src('HUB')}`, (p) => D.defects.filter((d) => d.project === p.id).length, (p) => D.defects.filter((d) => d.project === p.id).length],
+      ['Замечаний на 1000 м²', (p) => (D.defects.filter((d) => d.project === p.id).length / OBJ[p.object].area * 1000).toFixed(2).replace('.', ','), (p) => D.defects.filter((d) => d.project === p.id).length / OBJ[p.object].area],
+      ['Просрочено замечаний', (p) => D.defects.filter((d) => d.project === p.id && d.status === 'Просрочено').length, (p) => D.defects.filter((d) => d.project === p.id && d.status === 'Просрочено').length],
+    ];
+    const cell = (r, p) => {
+      if (!r[2]) return r[1](p);
+      const vals = ps.map(r[2]); const v = r[2](p), mn = Math.min(...vals), mx = Math.max(...vals);
+      const cls = mn === mx ? '' : v === mn ? 'good' : v === mx ? 'bad' : '';
+      return `<span class="${cls}" style="${cls ? 'font-weight:600' : ''}">${r[1](p)}</span>`;
+    };
+    const allWorks = [...new Set(ps.flatMap((p) => p.lines.map((l) => l.work)))];
+    return `<div class="crumbs"><a href="#/projects">Проекты</a> / сравнение</div><h1>Сравнение проектов</h1><div class="sub">Зелёным — лучшее значение в строке, красным — худшее</div>
+    <div class="card" style="margin-bottom:14px"><div class="tbl-wrap"><table><thead><tr><th></th>${ps.map((p) => `<th>${p.id}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map((r) => `<tr><td class="muted">${r[0]}</td>${ps.map((p) => `<td>${cell(r, p)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>
+    <div class="card" style="margin-bottom:14px"><h2>Сроки: план vs факт / прогноз</h2>${gantt(ps)}</div>
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card"><h2>Удельная стоимость, ₽/м²</h2>${hbar(ps.map((p) => ({ label: `${p.id} ${OBJ[p.object].type} ${REG[p.region].name.split(' ')[0]}`, value: perM2(p) })), { fmtV: rub })}</div>
+      <div class="card"><h2>Отклонение бюджета</h2>${hbar(ps.map((p) => ({ label: `${p.id} ${OBJ[p.object].type} ${REG[p.region].name.split(' ')[0]}`, value: projDelta(p), color: projDelta(p) > 0.05 ? '#c92a2a' : projDelta(p) > 0 ? '#e67700' : '#2b8a3e' })), { fmtV: (v) => pct(v) })}</div>
+    </div>
+    <div class="card"><h2>Цены на одинаковые работы, ₽ за ед. ${src('1С')}</h2><div class="tbl-wrap"><table><thead><tr><th>Вид работ</th><th>Ед.</th>${ps.map((p) => `<th class="num">${p.id}</th>`).join('')}<th class="num">Медиана рынка*</th></tr></thead><tbody>
+      ${allWorks.map((w) => `<tr><td><a href="#/benchmark/${w}">${esc(WRK[w].name)}</a></td><td class="muted">${WRK[w].unit}</td>${ps.map((p) => { const l = BENCH[w].lines.find((x) => x.project === p.id); return `<td class="num">${l ? `${rub(l.price)} ${idxPill(l.idx)}` : '<span class="muted">—</span>'}</td>`; }).join('')}<td class="num muted">${rub(BENCH[w].median)}</td></tr>`).join('')}
+    </tbody></table></div><div class="legend">* Медиана по всем проектам в ценах Москвы. Индекс учитывает региональный коэффициент.</div></div>`;
+  };
+
+  V.benchmark = (wid) => {
+    const prs = new Set(fProjects().map((p) => p.id));
+    if (wid && BENCH[wid]) {
+      const b = BENCH[wid], lines = b.lines.filter((l) => prs.has(l.project)).sort((a, c) => c.idx - a.idx);
+      const byCtr = {}; lines.forEach((l) => (byCtr[l.contractor] = byCtr[l.contractor] || []).push(l.idx));
+      return `<div class="crumbs"><a href="#/benchmark">Бенчмарк</a> / ${wid}</div><h1>${esc(b.work.name)}</h1><div class="sub">Единица: ${b.work.unit} · ${lines.length} строк КС-2 · медиана ${rub(b.median)} за ${b.work.unit} (цены Москвы)</div>
+      <div class="kpis">${kpi('Медиана (Москва-экв.)', rub(b.median))}${kpi('P10 — P90', `${rub(quant(lines.map((l) => l.norm), 0.1))} — ${rub(quant(lines.map((l) => l.norm), 0.9))}`)}
+        ${kpi('Строк дороже рынка > 25%', lines.filter((l) => l.idx > 1.25).length)}${kpi('Потенциал экономии', mln(sum(lines, 'over')), 'если довести выбросы до медианы')}</div>
+      <div class="card" style="margin-bottom:14px"><h2>Разброс цен</h2>${dotStrip(lines, b.median)}</div>
+      <div class="grid g2">
+        <div class="card"><h2>Все строки</h2>${tbl('bench-' + wid, [
+          { h: 'Объект', v: (l) => OBJ[l.object].name, f: (l) => `${objLink(l.object)}<div class="muted small">${l.project} · ${REG[l.region].name}</div>` },
+          { h: 'Подрядчик', v: (l) => CTR[l.contractor].name, f: (l) => esc(CTR[l.contractor].name) },
+          { h: 'Объём', num: 1, v: (l) => l.qty, f: (l) => fmt(l.qty) },
+          { h: 'Цена', num: 1, v: (l) => l.price, f: (l) => rub(l.price) },
+          { h: 'Индекс', num: 1, v: (l) => l.idx, f: (l) => idxPill(l.idx) },
+          { h: 'Переплата', num: 1, v: (l) => l.over, f: (l) => (l.over ? `<span class="bad">${mln(l.over)}</span>` : '—') },
+        ], lines)}</div>
+        <div class="card"><h2>Медианный индекс по подрядчикам</h2>${hbar(Object.entries(byCtr).map(([c, v]) => ({ label: `${CTR[c].name} (${v.length})`, value: median(v), color: median(v) > 1.1 ? '#e67700' : '#3b5bdb' })).sort((a, c) => c.value - a.value), { fmtV: (v) => v.toFixed(2).replace('.', ',') })}</div>
+      </div>`;
+    }
+    const rows = Object.values(BENCH).map((b) => { const ls = b.lines.filter((l) => prs.has(l.project)); return { b, ls, n: ls.length, p10: quant(ls.map((l) => l.norm), 0.1), p90: quant(ls.map((l) => l.norm), 0.9), out: ls.filter((l) => l.idx > 1.25).length, over: sum(ls, 'over') }; }).filter((r) => r.n);
+    return `<h1>Бенчмарк стоимости работ</h1><div class="sub">Строки КС-2 из 1С сопоставлены с единым классификатором работ (КСР). Цены приведены к Москве по региональному коэффициенту</div>
+    <div class="note">Главный инструмент экономии: одинаковые работы в разных объектах и у разных подрядчиков стоят по-разному. Выбросы дороже медианы более чем на 25% стоит разобрать с закупками.</div>
+    <div class="kpis">${kpi('Видов работ в классификаторе', rows.length)}${kpi('Строк КС-2', sum(rows, 'n'))}${kpi('Строк-выбросов', sum(rows, 'out'))}${kpi('Потенциал экономии', mln(sum(rows, 'over')))}</div>
+    <div class="card">${tbl('bench', [
+      { h: 'КСР', v: (r) => r.b.work.id, f: (r) => `<span class="muted">${r.b.work.id}</span>` },
+      { h: 'Вид работ', v: (r) => r.b.work.name, f: (r) => `<b>${esc(r.b.work.name)}</b>` },
+      { h: 'Ед.', f: (r) => r.b.work.unit },
+      { h: 'Строк', num: 1, v: (r) => r.n, f: (r) => r.n },
+      { h: 'Медиана', num: 1, v: (r) => r.b.median, f: (r) => rub(r.b.median) },
+      { h: 'P10 — P90', num: 1, v: (r) => r.p90 / r.p10, f: (r) => `${rub(r.p10)} — ${rub(r.p90)}` },
+      { h: 'Разброс P90/P10', num: 1, v: (r) => r.p90 / r.p10, f: (r) => `<span class="${sev(r.p90 / r.p10, 1.3, 1.5)}">×${(r.p90 / r.p10).toFixed(2).replace('.', ',')}</span>` },
+      { h: 'Выбросов', num: 1, v: (r) => r.out, f: (r) => (r.out ? `<span class="bad">${r.out}</span>` : '—') },
+      { h: 'Потенциал экономии', num: 1, v: (r) => r.over, f: (r) => (r.over ? mln(r.over) : '—') },
+    ], rows, { href: (r) => `#/benchmark/${r.b.work.id}` })}</div>`;
+  };
+
+  V.defects = () => {
+    let defs = fDefects();
+    const ctrRows = D.contractors.map((c) => {
+      const ds = defs.filter((d) => d.contractor === c.id); const ps = fProjects().filter((p) => p.contractor === c.id);
+      if (!ps.length) return null;
+      const area = sum(ps, (p) => OBJ[p.object].area); const closed = ds.filter((d) => d.closed);
+      return { c, ps: ps.length, n: ds.length, per: (ds.length / area) * 1000, overdue: ds.filter((d) => d.status === 'Просрочено').length, crit: ds.filter((d) => d.severity === 'Критичное').length, avg: closed.length ? sum(closed, (d) => days(d.created, d.closed)) / closed.length : 0 };
+    }).filter(Boolean);
+    if (state.defStatus) defs = defs.filter((d) => d.status === state.defStatus);
+    if (state.defCtr) defs = defs.filter((d) => d.contractor === state.defCtr);
+    defs = [...defs].sort((a, b) => (a.status === 'Просрочено' ? -1 : 0) - (b.status === 'Просрочено' ? -1 : 0) || b.created.localeCompare(a.created));
+    const statuses = ['', 'Просрочено', 'Открыто', 'В работе', 'Устранено'];
+    return `<h1>Замечания подрядчикам</h1><div class="sub">Фиксируются технадзором на приёмках с фото и сроком устранения. Подрядчик получает уведомление и прикладывает фото «после»</div>
+    <div class="card" style="margin-bottom:14px"><h2>Рейтинг подрядчиков по качеству</h2>${tbl('ctr', [
+      { h: 'Подрядчик', v: (r) => r.c.name, f: (r) => `<a href="#" data-ctr="${r.c.id}">${esc(r.c.name)}</a>` },
+      { h: 'Проектов', num: 1, v: (r) => r.ps, f: (r) => r.ps },
+      { h: 'Замечаний', num: 1, v: (r) => r.n, f: (r) => r.n },
+      { h: 'На 1000 м²', num: 1, v: (r) => r.per, f: (r) => `<span class="${sev(r.per, 1, 2)}">${r.per.toFixed(2).replace('.', ',')}</span>` },
+      { h: 'Критичных', num: 1, v: (r) => r.crit, f: (r) => r.crit || '—' },
+      { h: 'Просрочено', num: 1, v: (r) => r.overdue, f: (r) => (r.overdue ? `<span class="bad">${r.overdue}</span>` : '—') },
+      { h: 'Ср. время устранения', num: 1, v: (r) => r.avg, f: (r) => (r.avg ? Math.round(r.avg) + ' дн' : '—') },
+    ], ctrRows)}</div>
+    <div class="tabs">${statuses.map((s) => `<button class="btn ${state.defStatus === s ? 'on' : ''}" data-defstatus="${s}">${s || 'Все'} (${fDefects().filter((d) => !s || d.status === s).filter((d) => !state.defCtr || d.contractor === state.defCtr).length})</button>`).join('')}
+      ${state.defCtr ? `<button class="btn" data-ctr="">✕ ${esc(CTR[state.defCtr].name)}</button>` : ''}</div>
+    <div class="photos">${defs.slice(0, 120).map(defectCard).join('') || '<div class="muted">Нет замечаний</div>'}</div>
+    ${defs.length > 120 ? `<div class="muted" style="margin-top:10px">Показаны 120 из ${defs.length}</div>` : ''}`;
+  };
+
+  V.acceptances = () => {
+    const accs = [...fAcc()].sort((a, b) => b.date.localeCompare(a.date));
+    const res = (r) => accs.filter((a) => a.result === r).length;
+    return `<h1>Приёмки</h1><div class="sub">Скрытые работы, промежуточные и финальные приёмки с фотофиксацией</div>
+    <div class="kpis">${kpi('Приёмок', accs.length)}${kpi('Принято', res('Принято'))}${kpi('С замечаниями', res('Принято с замечаниями'))}${kpi('Не принято', `<span class="bad">${res('Не принято')}</span>`)}${kpi('Фото', sum(accs, 'photos'))}</div>
+    <div class="card">${tbl('acc', [
+      { h: 'Дата', v: (a) => a.date, f: (a) => dt(a.date) },
+      { h: 'Объект / проект', v: (a) => OBJ[PRJ[a.project].object].name, f: (a) => `${objLink(PRJ[a.project].object)}<div class="muted small">${a.project} · ${esc(CTR[PRJ[a.project].contractor].name)}</div>` },
+      { h: 'Этап', v: (a) => a.stage, f: (a) => a.stage },
+      { h: 'Результат', v: (a) => a.result, f: (a) => statusPill(a.result) },
+      { h: 'Замечаний', num: 1, v: (a) => a.defects.length, f: (a) => a.defects.length || '—' },
+      { h: 'Технадзор', v: (a) => PPL[a.inspector].name, f: (a) => person(a.inspector) },
+      { h: 'Фото', f: (a) => `<div class="strip">${accPhotos(a).slice(0, 4).map((u) => `<img src="${u}" data-photo="1" style="width:64px;height:48px"/>`).join('')}</div>` },
+    ], accs)}</div>`;
+  };
+
+  V.ops = () => {
+    let tks = fTickets();
+    const st = ticketStats(tks);
+    const objs = fObjects().filter((o) => o.status === 'В эксплуатации');
+    const objRows = objs.map((o) => { const t = tks.filter((x) => x.object === o.id); const s = ticketStats(t); return { o, ...s, per: s.n / 3 / (o.area / 1000) }; });
+    const byCat = {}; tks.forEach((t) => { const c = (byCat[t.category] = byCat[t.category] || { n: 0, late: 0 }); c.n++; if (t.hours > t.slaH) c.late++; });
+    const shown = state.ticketCat ? tks.filter((t) => t.category === state.ticketCat) : tks;
+    return `<h1>Эксплуатация</h1><div class="sub">Тикеты из очередей Трекера ${src('ТРЕКЕР')} за 90 дней, привязанные к объектам через поле «Объект»</div>
+    <div class="kpis">${kpi('Тикетов', st.n)}${kpi('Открыто', st.open)}${kpi('В SLA', pct0(st.sla))}${kpi('Ср. время решения', Math.round(st.avgH) + ' ч')}${kpi('Затраты по тикетам', mln(st.cost))}</div>
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card"><h2>По категориям (нажмите, чтобы отфильтровать)</h2><div class="tabs"><button class="btn ${!state.ticketCat ? 'on' : ''}" data-tcat="">Все</button>${Object.entries(byCat).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => `<button class="btn ${state.ticketCat === k ? 'on' : ''}" data-tcat="${esc(k)}">${esc(k)} · ${v.n} <span class="${v.late / v.n > 0.2 ? 'bad' : 'muted'}">(${pct0(v.late / v.n)} вне SLA)</span></button>`).join('')}</div></div>
+      <div class="card"><h2>Нагрузка на объекты: тикетов на 1000 м² в месяц</h2>${hbar(objRows.sort((a, b) => b.per - a.per).slice(0, 10).map((r) => ({ label: r.o.name, value: r.per, href: `#/object/${r.o.id}`, color: r.per > 4 ? '#c92a2a' : '#3b5bdb' })), { fmtV: (v) => v.toFixed(1).replace('.', ',') })}</div>
+    </div>
+    <div class="card" style="margin-bottom:14px"><h2>Объекты</h2>${tbl('ops-obj', [
+      { h: 'Объект', v: (r) => r.o.name, f: (r) => objLink(r.o.id) },
+      { h: 'Площадь', num: 1, v: (r) => r.o.area, f: (r) => fmt(r.o.area) },
+      { h: 'Тикетов', num: 1, v: (r) => r.n, f: (r) => r.n },
+      { h: 'Открыто', num: 1, v: (r) => r.open, f: (r) => r.open || '—' },
+      { h: 'На 1000 м²/мес', num: 1, v: (r) => r.per, f: (r) => r.per.toFixed(1).replace('.', ',') },
+      { h: 'SLA', num: 1, v: (r) => r.sla, f: (r) => (r.n ? `<span class="${sev(1 - r.sla, 0.1, 0.2)}">${pct0(r.sla)}</span>` : '—') },
+      { h: 'Затраты', num: 1, v: (r) => r.cost, f: (r) => (r.cost ? rub(r.cost) : '—') },
+      { h: 'Инженер', v: (r) => PPL[r.o.opsEngineer].name, f: (r) => person(r.o.opsEngineer) },
+    ], objRows)}</div>
+    <div class="card"><h2>Тикеты${state.ticketCat ? ': ' + esc(state.ticketCat) : ''}</h2>${ticketsTable('ops-t', [...shown].sort((a, b) => b.created.localeCompare(a.created)))}</div>`;
+  };
+
+  function personStats(p) {
+    const ts = D.tickets.filter((t) => t.assignee === p.id);
+    const d30 = new Date(new Date(D.TODAY) - 30 * 864e5).toISOString().slice(0, 10);
+    const closed30 = ts.filter((t) => t.resolved && t.resolved >= d30);
+    const prs = D.projects.filter((x) => !x.done && (x.manager === p.id || x.supervisor === p.id));
+    const defsAuthored = D.defects.filter((d) => d.author === p.id);
+    const defsOnProj = D.defects.filter((d) => D.projects.some((x) => x.id === d.project && x.manager === p.id));
+    const accs30 = D.acceptances.filter((a) => a.inspector === p.id && a.date >= d30);
+    const s = ticketStats(ts);
+    return { ts, open: ts.filter((t) => !t.resolved).length, closed30: closed30.length, sla: s.sla, prs, defsAuthored, overdue: defsOnProj.filter((d) => d.status === 'Просрочено').length + defsAuthored.filter((d) => d.status === 'Просрочено').length, accs30: accs30.length };
+  }
+
+  V.people = () => {
+    const rows = D.people.map((p) => ({ p, ...personStats(p) }));
+    return `<h1>Люди</h1><div class="sub">Кто чем занят: тикеты из Трекера, проекты, замечания и приёмки — в одном месте</div>
+    <div class="card">${tbl('people', [
+      { h: 'Сотрудник', v: (r) => r.p.name, f: (r) => `<b>${esc(r.p.name)}</b>` },
+      { h: 'Роль', v: (r) => r.p.role, f: (r) => r.p.role },
+      { h: `Открытые тикеты ${src('ТРЕКЕР')}`, num: 1, v: (r) => r.open, f: (r) => r.open || '—' },
+      { h: 'Закрыто за 30 дн', num: 1, v: (r) => r.closed30, f: (r) => r.closed30 || '—' },
+      { h: 'SLA', num: 1, v: (r) => (r.ts.length ? r.sla : 2), f: (r) => (r.ts.length ? `<span class="${sev(1 - r.sla, 0.1, 0.2)}">${pct0(r.sla)}</span>` : '—') },
+      { h: 'Проекты в работе', num: 1, v: (r) => r.prs.length, f: (r) => r.prs.length || '—' },
+      { h: `Замечаний выписал ${src('HUB')}`, num: 1, v: (r) => r.defsAuthored.length, f: (r) => r.defsAuthored.length || '—' },
+      { h: 'Приёмок за 30 дн', num: 1, v: (r) => r.accs30, f: (r) => r.accs30 || '—' },
+      { h: 'Просроченных замечаний', num: 1, v: (r) => r.overdue, f: (r) => (r.overdue ? `<span class="bad">${r.overdue}</span>` : '—') },
+    ], rows, { href: (r) => `#/person/${r.p.id}` })}</div>`;
+  };
+
+  V.person = (id) => {
+    const p = PPL[id]; if (!p) return '<h1>Не найден</h1>';
+    const s = personStats(p);
+    const weeks = Array.from({ length: 12 }, (_, i) => { const end = new Date(new Date(D.TODAY) - i * 7 * 864e5), start = new Date(end - 7 * 864e5); const iS = start.toISOString().slice(0, 10), iE = end.toISOString().slice(0, 10); return { label: `нед. до ${dt(iE)}`, value: s.ts.filter((t) => t.resolved && t.resolved > iS && t.resolved <= iE).length + D.defects.filter((d) => d.author === id && d.created > iS && d.created <= iE).length }; }).reverse();
+    return `<div class="crumbs"><a href="#/people">Люди</a> / ${esc(p.name)}</div><h1>${esc(p.name)}</h1><div class="sub">${p.role} · логин ${p.id}</div>
+    <div class="kpis">${kpi('Открытые тикеты', s.open)}${kpi('Закрыто за 30 дн', s.closed30)}${kpi('SLA', s.ts.length ? pct0(s.sla) : '—')}${kpi('Проекты в работе', s.prs.length)}${kpi('Замечаний выписал', s.defsAuthored.length)}${kpi('Приёмок за 30 дн', s.accs30)}</div>
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card"><h2>Активность по неделям (закрытые тикеты + замечания)</h2>${hbar(weeks, {})}</div>
+      <div class="card"><h2>Проекты в работе</h2>${s.prs.length ? gantt(s.prs, { W: 620 }) : '<div class="muted">Нет</div>'}</div>
+    </div>
+    ${s.defsAuthored.length ? `<div class="card" style="margin-bottom:14px"><h2>Последние выписанные замечания</h2><div class="photos">${[...s.defsAuthored].sort((a, b) => b.created.localeCompare(a.created)).slice(0, 8).map(defectCard).join('')}</div></div>` : ''}
+    ${s.ts.length ? `<div class="card"><h2>Тикеты</h2>${ticketsTable('p-t', [...s.ts].sort((a, b) => (a.resolved ? 1 : 0) - (b.resolved ? 1 : 0) || b.created.localeCompare(a.created)))}</div>` : ''}`;
+  };
+
+  V.lease = () => {
+    const objs = fObjects();
+    const regMed = {}; D.regions.forEach((r) => { regMed[r.id] = {}; D.businesses.forEach((b) => { regMed[r.id][b.id] = median(D.objects.filter((o) => o.region === r.id && o.business === b.id).map((o) => o.lease.rate)); }); });
+    const bizMed = {}; D.businesses.forEach((b) => (bizMed[b.id] = median(D.objects.filter((o) => o.business === b.id).map((o) => o.lease.rate / REG[o.region].k))));
+    const rows = objs.map((o) => ({ o, left: days(D.TODAY, o.lease.end), year: o.lease.rate * o.area * 12, idx: o.lease.rate / REG[o.region].k / bizMed[o.business] }));
+    return `<h1>Аренда</h1><div class="sub">Ставки, сроки договоров и сравнение ставок с медианой по формату ${src('1С')}</div>
+    <div class="kpis">${kpi('Годовая аренда', mln(sum(rows, 'year')))}${kpi('Истекают в 180 дн', `<span class="warn">${rows.filter((r) => r.left >= 0 && r.left < 180).length}</span>`)}${kpi('Уже истекли', `<span class="bad">${rows.filter((r) => r.left < 0).length}</span>`)}${kpi('Ставка выше рынка > 20%', rows.filter((r) => r.idx > 1.2).length)}</div>
+    <div class="card">${tbl('lease', [
+      { h: 'Объект', v: (r) => r.o.name, f: (r) => objLink(r.o.id) },
+      { h: 'Формат', v: (r) => r.o.business, f: (r) => BUS[r.o.business].name },
+      { h: 'Регион', v: (r) => REG[r.o.region].name, f: (r) => REG[r.o.region].name },
+      { h: 'Арендодатель', v: (r) => r.o.lease.landlord, f: (r) => esc(r.o.lease.landlord) },
+      { h: 'Площадь', num: 1, v: (r) => r.o.area, f: (r) => fmt(r.o.area) },
+      { h: 'Ставка ₽/м²/мес', num: 1, v: (r) => r.o.lease.rate, f: (r) => rub(r.o.lease.rate) },
+      { h: 'Индекс к формату', num: 1, v: (r) => r.idx, f: (r) => pill(r.idx.toFixed(2).replace('.', ','), r.idx > 1.2 ? 'bad' : r.idx > 1.08 ? 'warn' : 'good') },
+      { h: 'В год', num: 1, v: (r) => r.year, f: (r) => mln(r.year) },
+      { h: 'Договор до', v: (r) => r.left, f: (r) => `<span class="${r.left < 0 ? 'bad' : r.left < 180 ? 'warn' : ''}">${dt(r.o.lease.end)}${r.left < 0 ? ' · истёк' : r.left < 180 ? ` · ${r.left} дн` : ''}</span>` },
+      { h: 'Менеджер', v: (r) => PPL[r.o.leaseManager].name, f: (r) => person(r.o.leaseManager) },
+    ], rows)}</div>`;
+  };
+
+  V.about = () => `<h1>О проекте</h1><div class="sub">Прототип для обсуждения с командой · все данные синтетические</div>
+    <div class="note">Задача: собрать в одном окне аренду, стройку, эксплуатацию и запуск по всем бизнесам. Сейчас бухгалтерия живёт в 1С, операционные финансы — в финмодели, эксплуатация — в тикетах Трекера, стройка — в Excel и почте.</div>
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card"><h2>Что есть на рынке</h2><div class="tbl-wrap"><table><thead><tr><th>Класс</th><th>Сильные стороны</th><th>Чего не хватает</th></tr></thead><tbody>
+        <tr><td><b>IWMS / CAFM</b><div class="muted small">Planon, IBM TRIRIGA, Archibus</div></td><td>эксплуатация, аренда, заявки, площади</td><td>стройка, бюджеты проектов</td></tr>
+        <tr><td><b>Управление стройкой</b><div class="muted small">Procore, Autodesk CC, Primavera Unifier</div></td><td>бюджеты, контракты, графики</td><td>эксплуатация, аренда</td></tr>
+        <tr><td><b>Замечания и приёмки</b><div class="muted small">PlanRadar, Fieldwire</div></td><td>фото на плане, чек-листы</td><td>деньги, портфель</td></tr>
+        <tr><td><b>Российские</b><div class="muted small">1С:УСО и ТОИР, Gectaro, Exon, Неосинтез</div></td><td>работают в РФ, интеграция с 1С</td><td>каждый закрывает кусок, это +1–2 системы</td></tr>
+      </tbody></table></div>
+      <p class="muted small">Западные лидеры фактически недоступны: санкции, данные вне РФ, нет интеграции с 1С. Сравнивать цены на однотипные работы не умеет никто: для этого нужен единый классификатор работ.</p></div>
+      <div class="card"><h2>Предлагаемый подход</h2>
+        <p><b>Своя надстройка над текущими системами</b>, а не замена 1С и Трекера.</p>
+        <ul style="padding-left:18px;margin:0">
+          <li>Деньги вносим в 1С, заявки — в Трекере. Портал их <b>читает</b>.</li>
+          <li>Свой ввод только для того, чего нигде нет: <b>замечания, приёмки, фото</b>.</li>
+          <li><b>Единый реестр объектов</b> со сквозными ID, связанными с 1С, финмоделью и Трекером.</li>
+          <li><b>Классификатор работ (КСР)</b>: к нему привязывается каждая строка актов КС-2, на нём строится бенчмарк цен.</li>
+          <li>Удельные показатели (₽/м², тикетов на 1000 м²) везде рядом с абсолютными цифрами.</li>
+        </ul>
+        <p class="muted small" style="margin-top:10px">Пометки ${src('1С')} ${src('ФИН')} ${src('ТРЕКЕР')} ${src('HUB')} на экранах показывают, из какой системы берётся цифра.</p></div>
+    </div>
+    <div class="grid g2">
+      <div class="card"><h2>Роадмап</h2><table><tbody>
+        <tr><td><b>0. Мастер-данные</b></td><td class="muted">3–4 нед</td><td>реестр объектов и проектов, маппинг ключей 1С и Трекера, классификатор (топ-50 работ)</td></tr>
+        <tr><td><b>1. Витрины</b></td><td class="muted">6–8 нед</td><td>обзор, объекты, проекты, тикеты (только чтение)</td></tr>
+        <tr><td><b>2. Полевой контур</b></td><td class="muted">6–8 нед</td><td>замечания и приёмки с фото с телефона, уведомления подрядчикам</td></tr>
+        <tr><td><b>3. Бенчмарк</b></td><td class="muted">4–6 нед</td><td>маппинг КС-2 на классификатор, индексы цен, разбор выбросов</td></tr>
+        <tr><td><b>4. Масштаб</b></td><td class="muted">далее</td><td>все бизнесы, прогнозы сроков и денег, рейтинг подрядчиков в тендерах</td></tr>
+      </tbody></table></div>
+      <div class="card"><h2>Вопросы к команде</h2><ol style="padding-left:18px;margin:0">
+        <li>Каких экранов или метрик не хватает для вашей ежедневной работы?</li>
+        <li>Кто станет владельцем классификатора работ: сметчики, cost-контроль или закупки?</li>
+        <li>Насколько детальны акты КС-2 в 1С: есть ли разбивка по видам работ?</li>
+        <li>Есть ли в очередях эксплуатации в Трекере поле «Объект»?</li>
+        <li>Кто будет вносить замечания и приёмки: технадзор, РП или подрядчик?</li>
+        <li>Какие данные нельзя показывать всем (деньги, аренда)?</li>
+      </ol></div>
+    </div>`;
+
+  // ---------- модалки ----------
+  function openDefect(id) {
+    const d = DEF[id], p = PRJ[d.project];
+    $('#modal').innerHTML = `<div class="box"><div style="display:flex;justify-content:space-between;align-items:start"><div><div class="muted small">${d.id} · приёмка ${d.acceptance}</div><h1>${esc(d.title)}</h1></div><button class="btn" data-close>✕</button></div>
+      <div>${statusPill(d.status)} ${pill(d.severity, d.severity === 'Критичное' ? 'bad' : 'warn')}</div>
+      <div class="imgs"><div><div class="muted small">До · фото технадзора</div><img src="${photo(d.cat, d.id, `${d.location} · ${dt(d.created)}`, false)}"/></div>
+        <div><div class="muted small">После · фото подрядчика</div>${d.closed ? `<img src="${photo(d.cat, d.id, `${d.location} · устранено ${dt(d.closed)}`, true)}"/>` : `<div style="aspect-ratio:4/3;border:2px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center" class="muted">Ожидаем фото устранения</div>`}</div></div>
+      <div class="kv"><div>Объект</div><div>${objLink(d.object)}</div><div>Проект</div><div>${p.id} · ${esc(p.type)}</div><div>Место</div><div>${esc(d.location)}</div>
+        <div>Подрядчик</div><div>${esc(CTR[d.contractor].name)}</div><div>Выписал</div><div>${person(d.author)}</div>
+        <div>Создано</div><div>${dt(d.created)}</div><div>Срок устранения</div><div class="${d.status === 'Просрочено' ? 'bad' : ''}">${dt(d.due)}${d.status === 'Просрочено' ? ` · просрочено на ${days(d.due, D.TODAY)} дн` : ''}</div>
+        <div>Устранено</div><div>${dt(d.closed)}</div></div>
+      ${d.status !== 'Устранено' ? `<div style="margin-top:14px;display:flex;gap:8px"><button class="btn primary" disabled title="В прототипе не отправляется">Напомнить подрядчику</button><button class="btn" disabled>Продлить срок</button><span class="muted small" style="align-self:center">действия отключены в демо</span></div>` : ''}</div>`;
+    $('#modal').classList.remove('hidden');
+  }
+  function openPhoto(src_) { $('#modal').innerHTML = `<div class="box" style="max-width:820px"><div style="text-align:right"><button class="btn" data-close>✕</button></div><img src="${src_}" style="width:100%;border-radius:8px;margin-top:8px"/></div>`; $('#modal').classList.remove('hidden'); }
+
+  // ---------- роутер и события ----------
+  function render() {
+    const [, route = 'overview', param] = location.hash.split('/');
+    const fn = V[route] || V.overview;
+    renderFilters();
+    $('#view').innerHTML = fn(param && decodeURIComponent(param));
+    const navR = { object: 'objects', compare: 'projects', person: 'people' }[route] || route;
+    document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.r === navR));
+  }
+  window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.dataset.filter !== undefined) { state[t.dataset.filter] = t.value; render(); }
+    if (t.dataset.cmp) { t.checked ? state.compare.add(t.dataset.cmp) : state.compare.delete(t.dataset.cmp); render(); }
+  });
+  document.addEventListener('input', (e) => { if (e.target.id === 'q') { state.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); } });
+  document.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t.closest('[data-close]') || t.id === 'modal') { $('#modal').classList.add('hidden'); return; }
+    const th = t.closest('[data-sort]');
+    if (th) { const [id, col] = th.dataset.sort.split(':'); const cur = state.sort[id]; state.sort[id] = { col: +col, dir: cur && cur.col === +col ? -cur.dir : -1 }; render(); return; }
+    if (t.matches('input[type=checkbox]')) return;
+    const def = t.closest('[data-defect]'); if (def) { openDefect(def.dataset.defect); return; }
+    if (t.dataset.photo) { openPhoto(t.src); return; }
+    const reg = t.closest('[data-region]'); if (reg) { e.preventDefault(); state.region = reg.dataset.region; render(); return; }
+    const ctr = t.closest('[data-ctr]'); if (ctr) { e.preventDefault(); state.defCtr = ctr.dataset.ctr; render(); return; }
+    const ds = t.closest('[data-defstatus]'); if (ds) { state.defStatus = ds.dataset.defstatus; render(); return; }
+    const tc = t.closest('[data-tcat]'); if (tc) { state.ticketCat = tc.dataset.tcat; render(); return; }
+    if (t.id === 'cmp') { location.hash = '#/compare/' + [...state.compare].join(','); return; }
+    if (t.id === 'cmpclear') { state.compare.clear(); render(); return; }
+    if (t.closest('a')) return;
+    const h = t.closest('[data-href]'); if (h) location.hash = h.dataset.href;
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#modal').classList.add('hidden'); });
+  $('#today').textContent = new Date(D.TODAY).toLocaleDateString('ru-RU');
+  render();
+})();
+</script>
+</body>
+</html>
