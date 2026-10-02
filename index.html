@@ -97,6 +97,9 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
 
 
 .nf { color: #b35c00; background: #fff4e0; border-radius: 4px; padding: 0 5px; font-size: 12px; }
+
+.navtag { font-size: 10px; font-weight: 600; padding: 0 6px; border-radius: 4px; background: #2c3550; color: #aab3c8; margin-left: 4px; vertical-align: 1px; }
+.navtag.real { background: #2b8a3e; color: #fff; }
 </style>
 </head>
 <body>
@@ -707,7 +710,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   const idx = (arr, k = 'id') => Object.fromEntries(arr.map((x) => [x[k], x]));
   const OBJ = idx(D.objects), PRJ = idx(D.projects), PPL = idx(D.people), CTR = idx(D.contractors),
     WRK = idx(D.works), REG = idx(D.regions), BUS = idx(D.businesses), DIR = idx(D.directions), ACC = idx(D.acceptances), DEF = idx(D.defects);
-  const REAL = D.mode === 'real';
+  // mixed — закрытая версия: локации и аренда из реального реестра, остальные разделы на демо-данных
+  const MIXED = D.mode === 'mixed';
   const state = { business: '', direction: '', region: '', compare: new Set(), sort: {}, defStatus: '', defCtr: '', q: '', ticketCat: '' };
 
   // ---------- форматирование ----------
@@ -735,7 +739,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   // ---------- фильтры ----------
   const okB = (x) => !state.business || x.business === state.business;
   const okR = (x) => !state.region || x.region === state.region;
-  const fObjects = () => D.objects.filter((o) => okB(o) && okR(o));
+  const fObjects = () => D.objects.filter((o) => (!MIXED || !o.real) && okB(o) && okR(o));
+  const fLocs = () => (MIXED ? D.objects.filter((o) => o.real && okB(o) && okR(o)) : fObjects());
   const fProjects = () => D.projects.filter((p) => okB(p) && okR(p) && (!state.direction || p.direction === state.direction));
   const fDefects = () => { const ps = new Set(fProjects().map((p) => p.id)); return D.defects.filter((d) => ps.has(d.project)); };
   const fAcc = () => { const ps = new Set(fProjects().map((p) => p.id)); return D.acceptances.filter((a) => ps.has(a.project)); };
@@ -917,7 +922,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   };
 
   V.objects = () => {
-    let objs = fObjects();
+    let objs = fLocs();
     if (state.q) objs = objs.filter((o) => (o.name + o.address + o.id).toLowerCase().includes(state.q.toLowerCase()));
     const rows = objs.map((o) => {
       const ps = D.projects.filter((p) => p.object === o.id), defs = D.defects.filter((d) => d.object === o.id && d.status !== 'Устранено');
@@ -1002,7 +1007,24 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   const riskList = (rs) => (rs.length ? rs.map(([lv, t]) => `<div style="padding:6px 0;border-bottom:1px solid #f0f1f4"><span class="${lv}">●</span> ${esc(t)}</div>`).join('') : '<div class="good">Рисков не найдено</div>');
   const HAS = { projects: D.projects.length > 0, arch: D.layouts.length > 0, assets: D.assets.length > 0, it: D.itChannels.length > 0, ops: D.tickets.length > 0 };
   const OBJ_TABS_ALL = [['summary', 'Обзор'], ['units', 'Договор и допсоглашения'], ['passport', 'Паспорт и техника'], ['areas', 'Площади'], ['lease', 'Аренда и договор'], ['resp', 'Ответственность'], ['checks', 'Проверки и риски'], ['contacts', 'Контакты'], ['projects', 'Проекты и стройка'], ['arch', 'Архитектура'], ['assets', 'Оборудование и ОС'], ['it', 'ИТ'], ['ops', 'Эксплуатация']];
-  const OBJ_TABS = OBJ_TABS_ALL.filter(([k]) => HAS[k] !== false);
+  const OBJ_TABS = OBJ_TABS_ALL;
+  const DEMO_URL = 'https://evgeniygorbachev-glitch.github.io/re-hub/';
+  const STUBS = {
+    overview: ['Обзор портфеля', 'Сводка по регионам: проекты, бюджет и прогноз, отклонения сроков, замечания, тикеты, SLA.', 'финмодель (бюджеты), 1С (КС-2, оплаты), Трекер (тикеты), портал (замечания)'],
+    projects: ['Проекты и сравнение', 'Реестр проектов стройки и запуска, сравнение по срокам, деньгам и ₽/м², цены на одинаковые работы.', 'финмодель (бюджеты), 1С (договоры подряда, КС-2, оплаты)'],
+    compare: ['Сравнение проектов', 'Сравнение проектов по срокам, деньгам, удельным и ценам работ.', 'финмодель, 1С (КС-2)'],
+    arch: ['Архитектура и планировки', 'Стандарты форматов, зонирование локаций, стадии проектирования, согласования, изменения проекта, тестфиты.', 'планировки архитекторов (зоны и площади), реестр изменений проекта'],
+    benchmark: ['Бенчмарк работ', 'Цены на однотипные работы по классификатору, выбросы и потенциал экономии.', '1С (строки КС-2) + классификатор работ'],
+    defects: ['Замечания', 'Замечания подрядчикам с фото «до/после», сроки, рейтинг подрядчиков.', 'портал (вводит технадзор)'],
+    acceptances: ['Приёмки', 'Приёмки этапов с фотофиксацией.', 'портал (вводит технадзор)'],
+    ops: ['Эксплуатация', 'Тикеты эксплуатации по локациям и категориям, SLA, нагрузка на 1000 м².', 'Трекер: очереди эксплуатации с полями «Локация» и «Инв. №»'],
+    assets: ['Оборудование и ОС', 'Оборудование локаций из CAPEX: учётное состояние, износ, сч. 08, ремонты по инвентарному номеру.', '1С (ОС, сч. 01/08, акты ремонта) + Трекер (тикеты по инв. №)'],
+    asset: ['Карточка ОС', 'История ремонтов по инвентарному номеру.', '1С + Трекер'],
+    it: ['ИТ-инфраструктура', 'Каналы связи, ИТ-оборудование, готовность запусков, инциденты, ИТ-затраты.', 'договоры связи (1С), CMDB / мониторинг, очередь ИТ-поддержки'],
+    people: ['Люди', 'Загрузка и активность сотрудников по тикетам, проектам, замечаниям, приёмкам.', 'Staff + Трекер + портал'],
+    person: ['Сотрудник', 'Активность сотрудника.', 'Staff + Трекер + портал'],
+  };
+  const stub = (key, demoHash) => { const [t, what, srcs] = STUBS[key]; return `<div class="card" style="margin-bottom:14px;border-style:dashed"><h2>${t} <span class="pill p-neutral">источник не подключён</span></h2><p style="margin:0 0 8px">${what}</p><div class="muted small" style="margin-bottom:12px">Что подключить: ${srcs}</div><a class="btn primary" href="${MIXED ? '' : DEMO_URL}${demoHash}" ${MIXED ? '' : 'target="_blank" rel="noopener"'} style="text-decoration:none;color:#fff">Посмотреть на демо-данных →</a></div>`; };
 
   V.object = (id, tab = 'summary') => {
     const o = OBJ[id]; if (!o) return '<h1>Локация не найдена</h1>';
@@ -1016,7 +1038,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const productive = a.dry + a.temp + a.antr + a.sales, nonprod = a.abk + a.other;
     const rentYear = sum(Object.entries(k.rates).filter(([, v]) => v), ([z, v]) => v * (z === 'dry' ? a.dry : z === 'temp' ? a.temp : z === 'antr' ? a.antr : z === 'abk' ? a.abk : a.sales));
     const head = `<div class="crumbs"><a href="#/objects">Локации</a> / ${REG[o.region].name} / ${esc(c.code)}</div>
-    <h1>${esc(o.name)}</h1><div class="sub"><b>${esc(c.code)}</b> · ${esc(c.subtype)} · ${esc(o.address)} · ${BUS[o.business].name} · ${pill(c.leaseStatus, c.leaseStatus === 'В аренде' ? 'good' : 'acc')} ${pill('Карточка ' + pct0(cp.pct), cp.pct < 0.8 ? 'warn' : 'good')} ${risks.filter((r) => r[0] === 'bad').length ? pill(risks.filter((r) => r[0] === 'bad').length + ' риск.', 'bad') : ''}</div>
+    <h1>${esc(o.name)} ${MIXED ? (o.real ? '<span class="pill p-good" style="vertical-align:middle">реальные данные</span>' : '<span class="pill p-neutral" style="vertical-align:middle">демо</span>') : ''}</h1><div class="sub"><b>${esc(c.code)}</b> · ${esc(c.subtype)} · ${esc(o.address)} · ${BUS[o.business].name} · ${pill(c.leaseStatus, c.leaseStatus === 'В аренде' ? 'good' : 'acc')} ${pill('Карточка ' + pct0(cp.pct), cp.pct < 0.8 ? 'warn' : 'good')} ${risks.filter((r) => r[0] === 'bad').length ? pill(risks.filter((r) => r[0] === 'bad').length + ' риск.', 'bad') : ''}</div>
     <div class="tabs">${OBJ_TABS.map(([kk, l]) => `<a class="btn ${kk === tab ? 'on' : ''}" href="#/object/${id}/${kk}" style="text-decoration:none;${kk === tab ? 'color:#fff' : 'color:inherit'}">${l}</a>`).join('')}</div>`;
     let body = '';
     if (tab === 'summary') body = `<div class="kpis">
@@ -1115,6 +1137,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     <div class="card"><h2>Приёмки ${src('HUB')}</h2>${accs.length ? accs.map((x) => `<div style="display:flex;gap:14px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f1f4">
       <div style="width:240px"><b>${x.stage}</b> · ${dt(x.date)}<div>${statusPill(x.result)} <span class="muted small">${x.defects.length} замеч. · ${esc(PPL[x.inspector].name)}</span></div></div>
       <div class="strip">${accPhotos(x).map((u) => `<img src="${u}" data-photo="1"/>`).join('')}</div></div>`).join('') : '<div class="muted">Приёмок ещё не было</div>'}</div>`;
+    const TAB_STUB = { projects: 'projects', arch: 'arch', assets: 'assets', it: 'it', ops: 'ops' };
+    if (o.real && TAB_STUB[tab]) return head + stub(TAB_STUB[tab], `#/object/OBJ-001/${tab}`);
     if (tab === 'arch') body = layoutCard(o) || '<div class="card muted">Планировки нет</div>';
     if (tab === 'assets') body = assetsCard(o) || '<div class="card muted">Оборудования нет</div>';
     if (tab === 'it') body = itCard(o) || '<div class="card muted">Нет данных</div>';
@@ -1363,9 +1387,9 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   };
 
   V.lease = () => {
-    const objs = fObjects();
-    const regMed = {}; D.regions.forEach((r) => { regMed[r.id] = {}; D.businesses.forEach((b) => { regMed[r.id][b.id] = median(D.objects.filter((o) => o.region === r.id && o.business === b.id).map((o) => o.lease.rate)); }); });
-    const bizMed = {}; D.businesses.forEach((b) => (bizMed[b.id] = median(D.objects.filter((o) => o.business === b.id).map((o) => o.lease.rate / REG[o.region].k))));
+    const objs = fLocs();
+    const regMed = {}; D.regions.forEach((r) => { regMed[r.id] = {}; D.businesses.forEach((b) => { regMed[r.id][b.id] = median((MIXED ? D.objects.filter((x) => x.real) : D.objects).filter((o) => o.region === r.id && o.business === b.id).map((o) => o.lease.rate)); }); });
+    const bizMed = {}; D.businesses.forEach((b) => (bizMed[b.id] = median((MIXED ? D.objects.filter((x) => x.real) : D.objects).filter((o) => o.business === b.id).map((o) => o.lease.rate / REG[o.region].k))));
     const rows = objs.map((o) => ({ o, left: days(D.TODAY, o.lease.end), year: o.lease.rate * o.area * 12, idx: o.lease.rate / REG[o.region].k / bizMed[o.business] }));
     return `<h1>Аренда</h1><div class="sub">Ставки, сроки договоров и сравнение ставок с медианой по формату ${src('1С')}</div>
     <div class="kpis">${kpi('Годовая аренда', mln(sum(rows, 'year')))}${kpi('Истекают в 180 дн', `<span class="warn">${rows.filter((r) => r.left >= 0 && r.left < 180).length}</span>`)}${kpi('Уже истекли', `<span class="bad">${rows.filter((r) => r.left < 0).length}</span>`)}${kpi('Ставка выше рынка > 20%', rows.filter((r) => r.idx > 1.2).length)}</div>
@@ -1836,11 +1860,9 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   function openPhoto(src_) { $('#modal').innerHTML = `<div class="box" style="max-width:820px"><div style="text-align:right"><button class="btn" data-close>✕</button></div><img src="${src_}" style="width:100%;border-radius:8px;margin-top:8px"/></div>`; $('#modal').classList.remove('hidden'); }
 
   // ---------- роутер и события ----------
-  const ROUTE_HAS = { overview: !REAL, projects: HAS.projects, compare: HAS.projects, arch: HAS.arch, benchmark: HAS.projects, defects: HAS.projects, acceptances: HAS.projects, ops: HAS.ops, assets: HAS.assets, asset: HAS.assets, it: HAS.it, people: !REAL, person: !REAL };
-  document.querySelectorAll('#nav a').forEach((a) => { if (ROUTE_HAS[a.dataset.r] === false) a.style.display = 'none'; });
+  if (MIXED) document.querySelectorAll('#nav a').forEach((a) => { const r = a.dataset.r; if (r === 'about') return; const real = r === 'objects' || r === 'lease'; a.insertAdjacentHTML('beforeend', ` <span class="navtag ${real ? 'real' : ''}">${real ? 'реальные' : 'демо'}</span>`); });
   function render() {
-    let [, route = REAL ? 'objects' : 'overview', param, sub] = location.hash.split('/');
-    if (ROUTE_HAS[route] === false) route = 'objects';
+    let [, route = 'overview', param, sub] = location.hash.split('/');
     const fn = V[route] || V.overview;
     renderFilters();
     $('#view').innerHTML = fn(param && decodeURIComponent(param), sub && decodeURIComponent(sub));
