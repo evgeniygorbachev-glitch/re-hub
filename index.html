@@ -121,6 +121,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       <a href="#/people" data-r="people">Люди</a>
       <a href="#/audit" data-r="audit">Контроль и аудит</a>
       <a href="#/lease" data-r="lease">Аренда</a>
+      <a href="#/contracts" data-r="contracts">Договоры</a>
       <a href="#/about" data-r="about" style="margin-top:10px;border:1px solid #2c3550">О проекте</a>
     </nav>
     <div class="sources">
@@ -903,7 +904,55 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   for (const w of workOrders) for (const p of w.parts) if (p.price > 0) (partsMedian[p.art] = partsMedian[p.art] || []).push(p.price);
   for (const k of Object.keys(partsMedian)) partsMedian[k] = median_(partsMedian[k]);
 
-  window.DB = { TODAY: iso(TODAY), businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets, itChannels, itDevices, itLaunch, itTickets, mdLog, units, workOrders, partsMedian };
+  // ---------- Договоры кроме аренды: обслуживание, АХО, коммунальные, связь, страхование, обучение, аренда техники (ТЗ 5.13) ----------
+  // категория, предмет, ₽ на м² в год (или фикс), срок лет, бизнесы
+  const ctrCatalog = [
+    ['Эксплуатация', 'Техническое обслуживание инженерных систем', 420, 1, null], ['Эксплуатация', 'Обслуживание вентиляции и кондиционирования', 160, 1, null],
+    ['Эксплуатация', 'Обслуживание лифтов и подъёмников', -240000, 1, ['offices', 'retail']], ['Эксплуатация', 'Обслуживание АПС и СОУЭ', 60, 1, null],
+    ['Эксплуатация', 'Обслуживание холодильного оборудования', 210, 1, ['darkstores', 'retail']], ['Эксплуатация', 'Сервис ПРТ (абонентский)', -1800000, 2, ['logistics']],
+    ['АХО', 'Клининг', 780, 1, null], ['АХО', 'Вывоз ТКО', 45, 1, null], ['АХО', 'Дератизация и дезинсекция', 18, 1, null], ['АХО', 'Поставка расходных материалов', 60, 1, null],
+    ['АХО', 'Озеленение и уборка территории', 90, 1, ['logistics', 'offices']], ['Коммунальные', 'Электроснабжение', 900, 1, null], ['Коммунальные', 'Теплоснабжение', 320, 1, null],
+    ['Коммунальные', 'Водоснабжение и водоотведение', 70, 1, null], ['Связь', 'Основной канал связи', -480000, 2, null], ['Связь', 'Резервный канал связи', -180000, 1, null],
+    ['Страхование', 'Страхование имущества', 55, 1, null], ['Страхование', 'Страхование ответственности', 12, 1, null], ['Обучение', 'Обучение операторов ПРТ', -220000, 1, ['logistics']],
+    ['Обучение', 'Обучение по охране труда', -90000, 1, null], ['Аренда техники', 'Аренда ПРТ', -2400000, 3, ['logistics']], ['Аренда техники', 'Аренда оргтехники (МФУ)', -150000, 3, ['offices']],
+    ['Прочее', 'Обслуживание видеонаблюдения и СКУД', 75, 1, null], ['Прочее', 'Поверка и обслуживание счётчиков', -60000, 1, null],
+  ];
+  const svcNames = { 'Эксплуатация': ['ИнжСервис', 'Климат Профи', 'ЭлектроСети-М', 'ТехноМонтаж', 'ПРТ-Сервис'], 'АХО': ['Чистый Город', 'ЭкоЛайн', 'КлинПро', 'Сервис-Групп'], 'Коммунальные': ['Региональные Сети', 'ТеплоЭнерго', 'Водоканал'], 'Связь': ['СвязьТелеком', 'Нет-Линк'], 'Страхование': ['СК «Гарант»', 'СК «Прогресс»'], 'Обучение': ['УЦ «Профи»', 'Центр Компетенций'], 'Аренда техники': ['Складская Техника Сервис', 'ОфисТех'], 'Прочее': ['Системы Безопасности', 'Метрология Сервис'] };
+  const contracts = [];
+  let ci = 1;
+  for (const o of objects.filter((x) => x.status === 'В эксплуатации')) {
+    for (const [cat, subj, perM2, yrs, bz] of ctrCatalog) {
+      if (bz && !bz.includes(o.business)) continue;
+      if (rnd() < 0.12) continue; // договора нет — пробел в покрытии
+      const start = addDays(TODAY, -int(30, 365 * yrs + 200));
+      const end = addDays(start, 365 * yrs + int(-10, 10));
+      const auto = rnd() < 0.5;
+      const expired = end < TODAY;
+      const sumYear = Math.round((perM2 < 0 ? -perM2 : perM2 * o.area) * between(0.85, 1.2) / 1000) * 1000;
+      contracts.push({ id: 'ДГ-' + String(ci++).padStart(5, '0'), object: o.id, business: o.business, region: o.region, cat, subject: subj, contractor: pick(svcNames[cat]),
+        start: iso(start), end: iso(end), autoRenew: auto, sumYear, status: expired && !auto ? 'Истёк' : expired && auto ? 'Пролонгирован автоматически' : 'Действует',
+        notice: int(30, 90), docLink: rnd() < 0.85, source: rnd() < 0.7 ? '1С' : 'Ручной ввод',
+        number: `${cat === 'Коммунальные' ? 'Э' : cat === 'Связь' ? 'Т' : 'У'}-${int(100, 9999)}/${String(start.getFullYear()).slice(2)}`, inn: String(int(7700000000, 7799999999)),
+        period: perM2 < 0 && yrs > 1 ? 'Ежемесячно' : pick(['Ежемесячно', 'Ежемесячно', 'Ежеквартально', 'Раз в год']), payTerm: pick(['Постоплата 10 дн', 'Постоплата 30 дн', 'Предоплата 100%', 'Аванс 30% + постоплата']),
+        sla: cat === 'Эксплуатация' ? pick(['Реакция 2 ч, устранение 24 ч', 'Реакция 4 ч, устранение 48 ч', 'Выезд в день обращения']) : cat === 'АХО' ? pick(['Ежедневно, 2 смены', 'По графику 5/2', 'Еженедельно']) : null,
+        penalty: pick(['0,1% в день, не более 10%', '0,05% в день', 'Нет', 'Фикс. 50 000 ₽ за нарушение']), termination: pick(['Уведомление за 30 дн', 'Уведомление за 60 дн', 'Уведомление за 90 дн, без штрафа']),
+        responsible: o.opsEngineer, approvedBy: pick(byRole('Менеджер аренды')).id, sed: 'СЭД-' + int(100000, 999999), ds: [] });
+    }
+  }
+  for (const c of contracts) {
+    // допсоглашения: индексация, расширение состава, продление
+    const n = rnd() < 0.4 ? int(1, 3) : 0;
+    for (let i = 1; i <= n; i++) c.ds.push({ no: i, date: iso(addDays(new Date(c.start), int(60, 400))), what: pick(['Индексация стоимости +7%', 'Расширение перечня работ', 'Продление срока', 'Изменение реквизитов', 'Изменение графика оплат']), delta: Math.round(c.sumYear * between(-0.05, 0.12) / 1000) * 1000 });
+    // начисления и оплаты по месяцам за 12 мес (1С)
+    c.pay = []; const m = c.period === 'Ежемесячно' ? 1 : c.period === 'Ежеквартально' ? 3 : 12;
+    for (let k = 11; k >= 0; k--) { const d = new Date(TODAY.getFullYear(), TODAY.getMonth() - k, 1); if (d.getMonth() % m !== 0 && m > 1) continue; const due = c.sumYear / 12 * m * between(0.97, 1.03); const active = iso(d) >= c.start && (iso(d) <= c.end || c.autoRenew || c.paidAfterEnd); if (!active) continue; const paid = rnd() < 0.9; c.pay.push({ month: iso(d).slice(0, 7), accrued: Math.round(due / 100) * 100, paid: paid ? Math.round(due / 100) * 100 : 0, paidAt: paid ? iso(addDays(d, int(5, 40))) : null, late: paid && rnd() < 0.15 }); }
+    c.log = [{ date: c.start, who: c.approvedBy, what: `Договор внесён (${c.source})` }, ...c.ds.map((d) => ({ date: d.date, who: c.responsible, what: `ДС №${d.no}: ${d.what}` }))];
+    if (c.source !== '1С' && rnd() < 0.3) c.log.push({ date: iso(addDays(TODAY, -int(5, 200))), who: c.responsible, what: 'Правка суммы вручную · основание: ' + pick(['письмо контрагента', 'скан ДС', 'без основания']) });
+  }
+  // истёкший договор, по которому продолжаются оплаты
+  for (const c of pickN(contracts.filter((x) => x.status === 'Истёк'), 6)) c.paidAfterEnd = Math.round(c.sumYear / 12 * int(1, 4) / 1000) * 1000;
+
+  window.DB = { TODAY: iso(TODAY), contracts, businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets, itChannels, itDevices, itLaunch, itTickets, mdLog, units, workOrders, partsMedian };
 })();
 </script>
   <script>
@@ -1247,7 +1296,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     rows.forEach((r) => { r.share = tot ? r.total / tot : 0; r.m2 = r.area ? r.total / r.area : 0; });
     return { rows: rows.sort((a, b) => b.total - a.total), total: tot, shared, notes: [...notes] };
   }
-  const OBJ_TABS_ALL = [['summary', 'Обзор'], ['units', 'Договор и допсоглашения'], ['passport', 'Паспорт и техника'], ['areas', 'Площади'], ['lease', 'Аренда и договор'], ['costs', 'Затраты по статьям'], ['resp', 'Ответственность'], ['checks', 'Проверки и риски'], ['contacts', 'Контакты'], ['projects', 'Проекты и стройка'], ['arch', 'Архитектура'], ['assets', 'Оборудование и ОС'], ['it', 'ИТ'], ['ops', 'Эксплуатация']];
+  const OBJ_TABS_ALL = [['summary', 'Обзор'], ['units', 'Договор и допсоглашения'], ['passport', 'Паспорт и техника'], ['areas', 'Площади'], ['lease', 'Аренда и договор'], ['costs', 'Затраты по статьям'], ['resp', 'Ответственность'], ['checks', 'Проверки и риски'], ['contacts', 'Контакты'], ['contracts', 'Все договоры'], ['projects', 'Проекты и стройка'], ['arch', 'Архитектура'], ['assets', 'Оборудование и ОС'], ['it', 'ИТ'], ['ops', 'Эксплуатация']];
   const OBJ_TABS = OBJ_TABS_ALL;
   const objTabs = () => (UI() === 'role' && ROLE_TABS[state.role] ? OBJ_TABS_ALL.filter(([k]) => ROLE_TABS[state.role].includes(k)) : OBJ_TABS_ALL);
   const DEMO_URL = 'https://evgeniygorbachev-glitch.github.io/re-hub/';
@@ -1378,6 +1427,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     }
     if (tab === 'checks') body = `<div class="grid g2"><div class="card"><h2>Плановые проверки</h2><table><thead><tr><th>Вид</th><th>Последняя</th><th>Результат</th><th>Следующая</th></tr></thead><tbody>${c.inspections.map((i) => `<tr><td><b>${i.kind}</b></td><td>${fv(i.last, dt)}</td><td>${pill(i.result + (i.remarks ? ` (${i.remarks})` : ''), i.result === 'Без замечаний' ? 'good' : i.result === 'Замечания' ? 'warn' : 'bad')}</td><td class="${i.next < D.TODAY ? 'bad' : ''}">${dt(i.next)}${i.next < D.TODAY ? ' · просрочена' : ''}</td></tr>`).join('')}</tbody></table><div class="muted small" style="margin-top:6px">ПБ — пожарная безопасность, ЭОМ — электрооборудование, ОВиК — отопление, вентиляция, кондиционирование, ОТ — охрана труда</div></div>
       <div class="card"><h2>Риски (автоматически)</h2>${riskList(risks)}<div class="muted small" style="margin-top:8px">Правила расчёта — в документе «Карточка локации: модель данных», раздел 3</div></div></div>`;
+    if (tab === 'contracts') body = allContractsOf(o);
     if (tab === 'contacts') {
       const row = (r) => `<tr><td class="muted">${esc(r[0])}</td><td>${r[1] ? esc(r[1]) : NF}</td>${r.length > 2 ? `<td class="small">${r[1] ? esc(r[2]) : ''}</td><td class="small">${r[1] ? esc(r[3]) : ''}</td>` : ''}</tr>`;
       body = `<div class="grid g2"><div class="card"><h2>Наши ответственные</h2><table><tbody>${c.contacts.our.filter((r) => r[1] !== undefined).map(row).join('')}</tbody></table></div>
@@ -2250,12 +2300,92 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     location.hash = woHref(w);
   }
 
+  // ================= ДОГОВОРЫ НА ЛОКАЦИЮ (ТЗ 5.13) =================
+  const CAT_COLOR = { 'Аренда': 'acc', 'Эксплуатация': 'good', 'АХО': 'neutral', 'Коммунальные': 'warn', 'Связь': 'acc', 'Страхование': 'neutral', 'Обучение': 'neutral', 'Аренда техники': 'acc', 'Прочее': 'neutral' };
+  const ctrStatusPill = (st) => pill(st, st === 'Действует' ? 'good' : st === 'Истёк' ? 'bad' : st === 'Пролонгирован автоматически' ? 'warn' : 'neutral');
+  const fContracts = () => { const os = new Set(fObjects().map((o) => o.id)); return D.contracts.filter((c) => os.has(c.object)); };
+  // все договоры локации одним списком: аренда + ДС + остальные
+  function contractRows(o) {
+    const rows = [];
+    rows.push({ id: o.card?.contract?.number || 'Договор аренды', cat: 'Аренда', subject: `Аренда ${fmt(o.area)} м²`, contractor: o.lease.landlord, start: o.card?.contract?.date || null, end: o.lease.end, sumYear: o.lease.rate * o.area * 12, status: leaseDaysLeft(o) < 0 ? 'Истёк' : 'Действует', href: `#/object/${o.id}/lease`, src: '1С', autoRenew: false });
+    (o.units || []).forEach((u) => { if (u.planEnd && u.planEnd !== o.lease.end) rows.push({ id: `ДС ${u.rowNo || u.code || ''}`, cat: 'Аренда', subject: `${u.kind || 'Допсоглашение'}${u.area ? ` · ${fmt(u.area)} м²` : ''}`, contractor: o.lease.landlord, start: u.planStart || null, end: u.planEnd, sumYear: u.opexYear || 0, status: days(D.TODAY, u.planEnd) < 0 ? 'Истёк' : 'Действует', href: `#/object/${o.id}/units`, src: '1С', autoRenew: false }); });
+    D.contracts.filter((c) => c.object === o.id).forEach((c) => rows.push({ ...c, src: c.source, href: null }));
+    return rows.sort((a, b) => (a.end || '9999').localeCompare(b.end || '9999'));
+  }
+  const ctrCols = (withObj) => [
+    { h: 'Договор', v: (c) => c.id, f: (c) => `${c.number ? `<a href="#/contract/${c.id}"><b>${esc(c.number)}</b></a><div class="muted small">${c.id}</div>` : `<b>${esc(c.id)}</b>`}${c.paidAfterEnd ? `<div class="bad small">оплаты после окончания: ${rub(c.paidAfterEnd)}</div>` : ''}` },
+    ...(withObj ? [{ h: 'Локация', v: (c) => OBJ[c.object].name, f: (c) => objLink(c.object) }] : []),
+    { h: 'Категория', v: (c) => c.cat, f: (c) => pill(c.cat, CAT_COLOR[c.cat] || 'neutral') },
+    { h: 'Предмет', v: (c) => c.subject, f: (c) => (c.href ? `<a href="${c.href}">${esc(c.subject)}</a>` : esc(c.subject)) },
+    { h: 'Контрагент', v: (c) => c.contractor, f: (c) => esc(c.contractor) },
+    { h: 'Начало', v: (c) => c.start || '', f: (c) => dt(c.start) },
+    { h: 'Окончание', v: (c) => c.end || '', f: (c) => { const l = c.end ? days(D.TODAY, c.end) : null; return l == null ? '<span class="bad">не указано</span>' : `<span class="${l < 0 ? 'bad' : l < 90 ? 'bad' : l < 180 ? 'warn' : ''}">${dt(c.end)}</span><div class="small muted">${l < 0 ? `${-l} дн назад` : `через ${l} дн`}${c.autoRenew ? ' · автопролонгация' : ''}</div>`; } },
+    { h: 'Статус', v: (c) => c.status, f: (c) => ctrStatusPill(c.status) },
+    { h: 'В год', num: 1, v: (c) => c.sumYear || 0, f: (c) => (c.sumYear ? rub(c.sumYear) : '—') },
+    { h: '₽/м² в год', num: 1, v: (c) => (c.sumYear || 0) / OBJ[c.object || c.obj]?.area, f: (c) => (c.sumYear ? fmt(c.sumYear / OBJ[c.object || c.obj].area) : '—') },
+    { h: 'Источник', v: (c) => c.src || '', f: (c) => (c.src === '1С' ? src('1С') : `${src('HUB')} <span class="muted small">ручной ввод</span>`) + (c.docLink === false ? ' <span class="bad small">нет скана</span>' : '') },
+  ];
+  function allContractsOf(o) {
+    const rows = contractRows(o).map((r) => ({ ...r, object: o.id }));
+    const soon = rows.filter((r) => r.end && days(D.TODAY, r.end) >= 0 && days(D.TODAY, r.end) < 180), exp = rows.filter((r) => r.status === 'Истёк');
+    const byCat = {}; rows.forEach((r) => (byCat[r.cat] = (byCat[r.cat] || 0) + (r.sumYear || 0)));
+    const have = new Set(rows.map((r) => r.subject));
+    const gaps = D.contracts.length ? [...new Set(D.contracts.filter((c) => c.business === o.business).map((c) => c.subject))].filter((sj) => !have.has(sj)) : [];
+    return `<div class="kpis">${kpi('Договоров на локацию', rows.length, `${Object.keys(byCat).length} категорий`)}${kpi('Всего в год', mln(sum(rows, (r) => r.sumYear || 0)), `${fmt(sum(rows, (r) => r.sumYear || 0) / o.area)} ₽/м²`)}${kpi('Истекают < 180 дн', `<span class="${soon.length ? 'warn' : ''}">${soon.length}</span>`, soon[0] ? `ближайший: ${esc(soon[0].subject)} · ${dt(soon[0].end)}` : '')}${kpi('Истекли', `<span class="${exp.length ? 'bad' : ''}">${exp.length}</span>`, exp.some((r) => r.paidAfterEnd) ? '<span class="bad">есть оплаты после окончания</span>' : '')}${kpi('Нет договора', `<span class="${gaps.length ? 'warn' : ''}">${gaps.length}</span>`, gaps.slice(0, 2).map(esc).join(', ') + (gaps.length > 2 ? '…' : ''))}</div>
+    <div class="grid g2" style="margin-bottom:14px"><div class="card"><h2>Затраты по договорам в год, по категориям</h2>${hbar(Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v })), { fmtV: mln })}</div>
+    <div class="card"><h2>Линия окончаний · 24 месяца</h2>${(() => { const W = 600, X = (d) => 10 + Math.max(0, Math.min(1, (days(D.TODAY, d) + 90) / 820)) * (W - 20); const rs = rows.filter((r) => r.end && days(D.TODAY, r.end) > -90 && days(D.TODAY, r.end) < 730); return `<svg viewBox="0 0 ${W} ${rs.length * 18 + 24}" width="100%">${[0, 180, 365, 730].map((d) => `<line x1="${X(isoAdd(d))}" x2="${X(isoAdd(d))}" y1="0" y2="${rs.length * 18 + 10}" stroke="${d ? '#eef0f4' : '#3b5bdb'}" stroke-dasharray="${d ? '' : '4 3'}"/><text x="${X(isoAdd(d)) + 3}" y="${rs.length * 18 + 22}" font-size="10" fill="#8a91a3">${d ? '+' + d + ' дн' : 'сегодня'}</text>`).join('')}${rs.map((r, i) => `<g><title>${esc(r.subject)} · ${dt(r.end)}</title><text x="4" y="${i * 18 + 12}" font-size="10" fill="#1d2433">${esc(r.subject.length > 34 ? r.subject.slice(0, 33) + '…' : r.subject)}</text><circle cx="${X(r.end)}" cy="${i * 18 + 8}" r="5" fill="${days(D.TODAY, r.end) < 0 ? '#c92a2a' : days(D.TODAY, r.end) < 180 ? '#e67700' : '#2b8a3e'}"/></g>`).join('')}</svg>`; })()}</div></div>
+    <div class="card"><h2>Все договоры локации · по дате окончания</h2>${tbl('ctr-' + o.id, ctrCols(false), rows)}</div>`;
+  }
+  const CTRI = idx(D.contracts);
+  V.contract = (id) => {
+    const c = CTRI[id]; if (!c) return '<h1>Договор не найден</h1>';
+    const o = OBJ[c.object], l = days(D.TODAY, c.end);
+    const accrued = sum(c.pay, 'accrued'), paid = sum(c.pay, 'paid');
+    const kv = (rows) => `<div class="kv">${rows.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('')}</div>`;
+    const risks = [];
+    if (c.status === 'Истёк') risks.push(['bad', 'Договор истёк, автопролонгации нет' + (c.paidAfterEnd ? `; оплаты после окончания ${rub(c.paidAfterEnd)}` : '')]);
+    if (l >= 0 && l < c.notice + 30 && !c.autoRenew) risks.push(['warn', `До окончания ${l} дн при сроке уведомления ${c.notice} дн: решение нужно сейчас`]);
+    if (!c.docLink) risks.push(['bad', 'Нет скана договора']);
+    if (c.source !== '1С') risks.push(['warn', 'Введён вручную, не подтверждён 1С']);
+    if (c.log.some((x) => /без основания/.test(x.what))) risks.push(['bad', 'Правка суммы без документа-основания']);
+    if (c.pay.some((p) => p.accrued && !p.paid)) risks.push(['warn', `Не оплачено периодов: ${c.pay.filter((p) => p.accrued && !p.paid).length}`]);
+    return `<div class="crumbs"><a href="#/contracts">Договоры</a> / ${objLink(c.object)} / ${c.id}</div>
+    <h1>${esc(c.subject)} <span class="muted" style="font-weight:400">· № ${esc(c.number)}</span></h1>
+    <div class="sub">${pill(c.cat, CAT_COLOR[c.cat] || 'neutral')} ${ctrStatusPill(c.status)} · ${esc(c.contractor)} · ${objLink(c.object)} · ${c.source === '1С' ? src('1С') : src('HUB') + ' ручной ввод'}</div>
+    <div class="kpis">${kpi('В год', rub(c.sumYear), `${fmt(c.sumYear / o.area)} ₽/м²`)}${kpi('Окончание', `<span class="${l < 0 ? 'bad' : l < 90 ? 'bad' : l < 180 ? 'warn' : ''}">${dt(c.end)}</span>`, l < 0 ? `${-l} дн назад` : `через ${l} дн · уведомить за ${c.notice} дн${c.autoRenew ? ' · автопролонгация' : ''}`)}${kpi('Начислено за 12 мес', rub(accrued), `оплачено ${rub(paid)}${paid < accrued ? ` · <span class="bad">долг ${rub(accrued - paid)}</span>` : ''}`)}${kpi('Допсоглашений', c.ds.length, c.ds.length ? `последнее ${dt(c.ds[c.ds.length - 1].date)}` : '')}${kpi('Рисков', `<span class="${risks.some((r) => r[0] === 'bad') ? 'bad' : risks.length ? 'warn' : ''}">${risks.length}</span>`)}</div>
+    ${risks.length ? `<div class="card" style="margin-bottom:14px;border-color:#f1b2b2"><h2>Что требует внимания</h2>${risks.map((r) => `<div class="${r[0]}">• ${esc(r[1])}</div>`).join('')}</div>` : ''}
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card"><h2>Реквизиты и стороны</h2>${kv([['Номер', esc(c.number)], ['Дата', dt(c.start)], ['Категория', esc(c.cat)], ['Предмет', esc(c.subject)], ['Контрагент', esc(c.contractor)], ['ИНН', c.inn], ['Локация', objLink(c.object)], ['Площадь', fmt(o.area) + ' м²'], ['Документ в СЭД', c.docLink ? `<a href="#" onclick="return false">${c.sed}</a>` : '<span class="bad">скан не приложен</span>'], ['Источник записи', c.source === '1С' ? src('1С') : `${src('HUB')} ручной ввод`]])}</div>
+      <div class="card"><h2>Срок и условия</h2>${kv([['Срок действия', `${dt(c.start)} — ${dt(c.end)}`], ['Пролонгация', c.autoRenew ? 'автоматическая, если нет уведомления' : 'нет, нужен новый договор или ДС'], ['Уведомление о расторжении', `${c.notice} дн`], ['Расторжение', esc(c.termination)], ['Штрафы', esc(c.penalty)], ['Уровень сервиса (SLA)', c.sla ? esc(c.sla) : '—'], ['Периодичность оплаты', esc(c.period)], ['Условия оплаты', esc(c.payTerm)]])}</div>
+      <div class="card"><h2>Ответственные</h2>${kv([['Ведёт договор', person(c.responsible)], ['Согласовал', person(c.approvedBy)], ['Напоминания', `за ${c.notice + 30} и ${c.notice} дн до окончания · ${person(c.responsible)} и руководитель`]])}</div>
+      <div class="card"><h2>Допсоглашения</h2>${c.ds.length ? `<table class="small"><thead><tr><th>№</th><th>Дата</th><th>Что меняет</th><th class="num">Δ в год</th></tr></thead><tbody>${c.ds.map((d) => `<tr><td>ДС ${d.no}</td><td>${dt(d.date)}</td><td>${esc(d.what)}</td><td class="num ${d.delta > 0 ? 'bad' : 'good'}">${d.delta > 0 ? '+' : ''}${rub(d.delta)}</td></tr>`).join('')}</tbody></table>` : '<div class="muted">Допсоглашений нет</div>'}</div>
+    </div>
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card"><h2>Начисления и оплаты ${src('1С')} · 12 мес</h2>${tbl('pay-' + c.id, [{ h: 'Период', v: (p) => p.month, f: (p) => p.month }, { h: 'Начислено', num: 1, v: (p) => p.accrued, f: (p) => rub(p.accrued) }, { h: 'Оплачено', num: 1, v: (p) => p.paid, f: (p) => (p.paid ? rub(p.paid) : '<span class="bad">нет</span>') }, { h: 'Дата оплаты', v: (p) => p.paidAt || '', f: (p) => (p.paidAt ? dt(p.paidAt) + (p.late ? ' <span class="warn small">с задержкой</span>' : '') : '—') }], c.pay, { empty: 'Начислений за период нет' })}</div>
+      <div class="card"><h2>Журнал изменений ${src('HUB')}</h2>${tbl('log-' + c.id, [{ h: 'Дата', v: (x) => x.date, f: (x) => dt(x.date) }, { h: 'Кто', v: (x) => x.who, f: (x) => person(x.who) }, { h: 'Что', v: (x) => x.what, f: (x) => (/без основания/.test(x.what) ? `<span class="bad">${esc(x.what)}</span>` : esc(x.what)) }], [...c.log].reverse())}</div>
+    </div>`;
+  };
+  V.contracts = () => {
+    const cs = fContracts(), objs = fObjects().filter((o) => o.status === 'В эксплуатации');
+    const soon = cs.filter((c) => days(D.TODAY, c.end) >= 0 && days(D.TODAY, c.end) < 180), exp = cs.filter((c) => c.status === 'Истёк');
+    const byCat = {}; cs.forEach((c) => { const b = (byCat[c.cat] = byCat[c.cat] || { n: 0, sum: 0, area: 0 }); b.n++; b.sum += c.sumYear; });
+    const cov = {}; cs.forEach((c) => (cov[c.subject] = (cov[c.subject] || new Set()).add(c.object)));
+    const filt = state.ctrFilter || '';
+    const F = { '': ['Все', () => true], soon: ['Истекают < 180 дн', (c) => days(D.TODAY, c.end) >= 0 && days(D.TODAY, c.end) < 180], exp: ['Истекли', (c) => c.status === 'Истёк'], auto: ['Автопролонгация', (c) => c.autoRenew], paid: ['Оплаты после окончания', (c) => c.paidAfterEnd], manual: ['Ручной ввод', (c) => c.source !== '1С'], nodoc: ['Нет скана', (c) => !c.docLink] };
+    return `<h1>Договоры на локации</h1><div class="sub">Все договоры, кроме аренды: эксплуатация, АХО, коммунальные, связь, страхование, обучение, аренда техники ${src('1С')} ${src('HUB')} · аренда — в разделе «Аренда» и в карточке локации на вкладке «Все договоры»</div>
+    <div class="kpis">${kpi('Договоров', cs.length, `${objs.length} локаций · ${Object.keys(byCat).length} категорий`)}${kpi('В год', mln(sum(cs, 'sumYear')), `${fmt(sum(cs, 'sumYear') / Math.max(1, sum(objs, 'area')))} ₽/м²`)}${kpi('Истекают < 180 дн', `<span class="warn">${soon.length}</span>`, mln(sum(soon, 'sumYear')) + ' в год')}${kpi('Истекли', `<span class="bad">${exp.length}</span>`, `оплаты после окончания: ${mln(sum(cs, (c) => c.paidAfterEnd || 0))}`)}${kpi('Ручной ввод', pct0(cs.length ? cs.filter((c) => c.source !== '1С').length / cs.length : 0), 'подтвердить источником')}</div>
+    <div class="grid g2" style="margin-bottom:14px"><div class="card"><h2>По категориям, в год</h2>${hbar(Object.entries(byCat).sort((a, b) => b[1].sum - a[1].sum).map(([k, v]) => ({ label: `${k} · ${v.n} дог.`, value: v.sum })), { fmtV: mln })}</div>
+    <div class="card"><h2>Покрытие: у скольких локаций есть договор</h2>${tbl('cov', [{ h: 'Предмет', v: (r) => r[0], f: (r) => esc(r[0]) }, { h: 'Локаций с договором', num: 1, v: (r) => r[1], f: (r) => `${r[1]} из ${r[2]}` }, { h: 'Покрытие', num: 1, v: (r) => r[1] / r[2], f: (r) => `<span class="${r[1] / r[2] < 0.8 ? 'bad' : ''}">${pct0(r[1] / r[2])}</span>` }], Object.entries(cov).map(([sj, set]) => { const need = objs.filter((o) => D.contracts.some((c) => c.subject === sj && c.business === o.business) || [...set].some((id) => OBJ[id].business === o.business)).length; return [sj, set.size, Math.max(need, set.size)]; }).sort((a, b) => a[1] / a[2] - b[1] / b[2]).slice(0, 10))}</div></div>
+    <div class="tabs">${Object.entries(F).map(([k, [l, fn]]) => `<button class="btn ${filt === k ? 'on' : ''}" data-ctrfilter="${k}">${l} (${cs.filter(fn).length})</button>`).join('')}</div>
+    <div class="card">${tbl('ctrs', ctrCols(true), cs.filter(F[filt][1]).sort((a, b) => a.end.localeCompare(b.end)).slice(0, 300))}</div>`;
+  };
+
   // ================= НОВАЯ ВЕРСИЯ: рабочее место по роли =================
   const UI = () => state.ui || 'full';
-  const ROLE_NAV = { lease: ['today', 'objects', 'lease'], ops: ['today', 'repairs', 'ops', 'objects'], pm: ['today', 'projects', 'defects', 'acceptances'], svc: ['today', 'repairs'] };
-  const ROLE_TABS = { lease: ['summary', 'units', 'lease', 'areas', 'costs', 'contacts'], ops: ['summary', 'assets', 'ops', 'resp', 'passport'], pm: ['summary', 'projects', 'arch'], svc: ['summary', 'assets'] };
+  const ROLE_NAV = { lease: ['today', 'objects', 'lease', 'contracts'], ops: ['today', 'repairs', 'ops', 'contracts', 'objects'], pm: ['today', 'projects', 'defects', 'acceptances'], svc: ['today', 'repairs'] };
+  const ROLE_TABS = { lease: ['summary', 'units', 'lease', 'contracts', 'areas', 'costs', 'contacts'], ops: ['summary', 'contracts', 'assets', 'ops', 'resp', 'passport'], pm: ['summary', 'projects', 'arch'], svc: ['summary', 'assets'] };
   const roleNav = () => (UI() === 'role' ? ROLE_NAV[state.role] || null : null);
-  const navAllowed = (r) => { const n = roleNav(); if (!n) return r !== 'today'; const base = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', wo: 'repairs', unit: 'repairs' }[r] || r; return n.includes(base) || r === 'about'; };
+  const navAllowed = (r) => { const n = roleNav(); if (!n) return r !== 'today'; const base = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', wo: 'repairs', unit: 'repairs', contract: 'contracts' }[r] || r; return n.includes(base) || r === 'about'; };
   const actRow = (title, sub, due, href, cls) => `<a class="click" href="${href}" style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);text-decoration:none;color:inherit"><div><b>${title}</b><div class="muted small">${sub}</div></div><div class="${cls || ''}" style="text-align:right;white-space:nowrap">${due}</div></a>`;
   const list = (rows, empty = 'Ничего не требует действия') => (rows.length ? rows.join('') : `<div class="muted" style="padding:8px 0">${empty}</div>`);
   V.today = () => {
@@ -2265,9 +2395,10 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       const objs = fLocs().filter((o) => o.card.leaseStatus === 'В аренде');
       const ev = [];
       objs.forEach((o) => { const l = leaseDaysLeft(o); if (l < 365) ev.push({ o, what: l < 0 ? 'Договор истёк, статус «в аренде»' : 'Окончание договора: нужно решение продлить / выйти', d: o.lease.end, l, cls: l < 90 ? 'bad' : 'warn' }); (o.units || []).forEach((u) => { if (/опцион/i.test(u.kind || '') && u.planEnd) { const ul = days(D.TODAY, u.planEnd); if (ul >= 0 && ul < 180) ev.push({ o, what: `Опцион ${u.rowNo || u.code}: истекает`, d: u.planEnd, l: ul, cls: 'warn' }); } }); });
+      fContracts().filter((c) => objs.some((o) => o.id === c.object)).forEach((c) => { const l = days(D.TODAY, c.end); if (l < 90 && !c.autoRenew) ev.push({ o: OBJ[c.object], what: `${c.cat}: ${c.subject} — ${l < 0 ? 'истёк' : 'истекает'}`, d: c.end, l, cls: l < 0 ? 'bad' : 'warn', href: `#/object/${c.object}/contracts` }); });
       ev.sort((a, b) => a.l - b.l);
       const sig = auditSignals().filter((s) => s.code.startsWith('A') && objs.some((o) => o.id === s.obj));
-      return head('Сегодня · аренда', `${objs.length} локаций в работе`) + `<div class="grid g2"><div class="card"><h2>Требует решения <span class="muted small">(${ev.length})</span></h2>${list(ev.slice(0, 15).map((e) => actRow(esc(e.o.name), e.what, `${dt(e.d)}<div class="small">${e.l < 0 ? `${-e.l} дн назад` : `через ${e.l} дн`}</div>`, `#/object/${e.o.id}/lease`, e.cls)))}</div>
+      return head('Сегодня · аренда', `${objs.length} локаций в работе`) + `<div class="grid g2"><div class="card"><h2>Требует решения <span class="muted small">(${ev.length})</span></h2>${list(ev.slice(0, 15).map((e) => actRow(esc(e.o.name), e.what, `${dt(e.d)}<div class="small">${e.l < 0 ? `${-e.l} дн назад` : `через ${e.l} дн`}</div>`, e.href || `#/object/${e.o.id}/lease`, e.cls)))}</div>
       <div class="card"><h2>Расхождения по деньгам <span class="muted small">(${sig.length})</span></h2>${list(sig.slice(0, 15).map((s) => actRow(esc(OBJ[s.obj].name), esc(s.title), `<span class="${SEV[s.sev][1] || ''}">${rub(s.amount)}</span>`, `#/object/${s.obj}/costs`)), 'Расхождений нет')}</div></div>`;
     }
     if (r === 'ops') {
@@ -2651,7 +2782,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const rb = document.getElementById('rolebar'); if (rb) rb.innerHTML = READONLY_ROLES.includes(state.role) ? '<b>Режим аудитора:</b> полный просмотр, включая деньги и журнал изменений · данные только для чтения · каждое действие пишется в журнал' : '';
     if (rb) rb.style.display = rb.innerHTML ? '' : 'none';
     $('#view').innerHTML = fn(param && decodeURIComponent(param), sub && decodeURIComponent(sub));
-    const navR = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', it: 'it', wo: 'repairs', unit: 'repairs' }[route] || route;
+    const navR = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', it: 'it', wo: 'repairs', unit: 'repairs', contract: 'contracts' }[route] || route;
     const ub = document.getElementById('uibar'); if (ub) ub.innerHTML = UI() === 'role' ? `<b>Новая версия:</b> рабочее место роли «${ROLES[state.role]}» — ${(roleNav() || []).length || 'все'} раздела вместо 15, первый экран «Сегодня» показывает, что требует действия. Переключите роль, чтобы увидеть другие рабочие места.` : `<b>Старая версия:</b> общее меню из 15 разделов для всех ролей.`;
     document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.r === navR));
   }
@@ -2679,6 +2810,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const uib = t.closest('[data-ui]'); if (uib) { state.ui = uib.dataset.ui; try { localStorage.setItem('rehub.ui', state.ui); } catch (e) {} if (state.ui === 'role' && !navAllowed((location.hash.split('/')[1] || 'overview'))) location.hash = '#/today'; else if (state.ui === 'full' && location.hash.startsWith('#/today')) location.hash = '#/overview'; render(); return; }
     const af = t.closest('[data-afilter]'); if (af) { state.assetFilter = af.dataset.afilter; render(); return; }
     const rt = t.closest('[data-reptab]'); if (rt) { location.hash = '#/repairs/' + rt.dataset.reptab; return; }
+    const cf = t.closest('[data-ctrfilter]'); if (cf) { state.ctrFilter = cf.dataset.ctrfilter; render(); return; }
     const rf = t.closest('[data-repfilter]'); if (rf) { state.repFilter = rf.dataset.repfilter; render(); return; }
     const rp = t.closest('[data-repperiod]'); if (rp) { state.repPeriod = rp.dataset.repperiod; render(); return; }
     const wp = t.closest('[data-wophoto]'); if (wp) { NW().photos.push({ stage: wp.dataset.wophoto, seed: 'new' + Date.now() }); render(); return; }
