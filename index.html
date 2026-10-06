@@ -106,6 +106,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   <aside class="side">
     <div class="logo">RE<span>Hub</span></div>
     <nav id="nav">
+      <a href="#/today" data-r="today">Сегодня</a>
       <a href="#/overview" data-r="overview">Обзор</a>
       <a href="#/objects" data-r="objects">Локации</a>
       <a href="#/projects" data-r="projects">Проекты и сравнение</a>
@@ -134,6 +135,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   <main>
     <div style="background:#fff4e0;color:#8a4b00;font-size:12px;padding:6px 24px;border-bottom:1px solid #f5d9a8">Прототип для обсуждения · все данные синтетические · <a href="#/about">о проекте</a></div>
     <header class="filters" id="filters"></header>
+    <div id="uibar" style="background:#eef6ff;color:#1b4d7a;font-size:12px;padding:6px 24px;border-bottom:1px solid #cfe3f7"></div>
     <div id="rolebar" style="display:none;background:#e8edff;color:#2b3a8f;font-size:12px;padding:6px 24px;border-bottom:1px solid #c9d3ff"></div>
     <section id="view"></section>
   </main>
@@ -926,6 +928,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const sel = (key, label, items) => `<label>${label}<select data-filter="${key}"><option value="">Все</option>${items.map((i) => `<option value="${i.id}" ${state[key] === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>`;
     $('#filters').innerHTML = sel('business', 'Бизнес', D.businesses) + sel('direction', 'Направление', D.directions) + sel('region', 'Регион', D.regions) +
       `<span class="muted small" style="margin-left:auto">Направление фильтрует проекты, замечания и приёмки</span>` +
+      `<span class="tabs" style="margin:0;gap:0"><button class="btn ${UI() === 'full' ? 'on' : ''}" data-ui="full" style="border-radius:8px 0 0 8px;padding:4px 10px">Старая версия</button><button class="btn ${UI() === 'role' ? 'on' : ''}" data-ui="role" style="border-radius:0 8px 8px 0;padding:4px 10px">Новая: по роли</button></span>` +
       `<label title="Демо ролевого доступа: в системе роль берётся из учётной записи">Роль<select data-role>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${state.role === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`;
   }
 
@@ -1218,6 +1221,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   }
   const OBJ_TABS_ALL = [['summary', 'Обзор'], ['units', 'Договор и допсоглашения'], ['passport', 'Паспорт и техника'], ['areas', 'Площади'], ['lease', 'Аренда и договор'], ['costs', 'Затраты по статьям'], ['resp', 'Ответственность'], ['checks', 'Проверки и риски'], ['contacts', 'Контакты'], ['projects', 'Проекты и стройка'], ['arch', 'Архитектура'], ['assets', 'Оборудование и ОС'], ['it', 'ИТ'], ['ops', 'Эксплуатация']];
   const OBJ_TABS = OBJ_TABS_ALL;
+  const objTabs = () => (UI() === 'role' && ROLE_TABS[state.role] ? OBJ_TABS_ALL.filter(([k]) => ROLE_TABS[state.role].includes(k)) : OBJ_TABS_ALL);
   const DEMO_URL = 'https://evgeniygorbachev-glitch.github.io/re-hub/';
   const STUBS = {
     overview: ['Обзор портфеля', 'Сводка по регионам: проекты, бюджет и прогноз, отклонения сроков, замечания, тикеты, SLA.', 'финмодель (бюджеты), 1С (КС-2, оплаты), Трекер (тикеты), портал (замечания)'],
@@ -1249,7 +1253,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const rentYear = sum(Object.entries(k.rates).filter(([, v]) => v), ([z, v]) => v * (z === 'dry' ? a.dry : z === 'temp' ? a.temp : z === 'antr' ? a.antr : z === 'abk' ? a.abk : a.sales));
     const head = `<div class="crumbs"><a href="#/objects">Локации</a> / ${REG[o.region].name} / ${esc(c.code)}</div>
     <h1>${esc(o.name)} ${MIXED ? (o.real ? '<span class="pill p-good" style="vertical-align:middle">реальные данные</span>' : '<span class="pill p-neutral" style="vertical-align:middle">демо</span>') : ''}</h1><div class="sub"><b>${esc(c.code)}</b> · ${esc(c.subtype)} · ${esc(o.address)} · ${BUS[o.business].name} · ${pill(c.leaseStatus, c.leaseStatus === 'В аренде' ? 'good' : 'acc')} ${pill('Карточка ' + pct0(cp.pct), cp.pct < 0.8 ? 'warn' : 'good')} ${risks.filter((r) => r[0] === 'bad').length ? pill(risks.filter((r) => r[0] === 'bad').length + ' риск.', 'bad') : ''}</div>
-    <div class="tabs">${OBJ_TABS.map(([kk, l]) => `<a class="btn ${kk === tab ? 'on' : ''}" href="#/object/${id}/${kk}" style="text-decoration:none;${kk === tab ? 'color:#fff' : 'color:inherit'}">${l}</a>`).join('')}</div>`;
+    <div class="tabs">${objTabs().map(([kk, l]) => `<a class="btn ${kk === tab ? 'on' : ''}" href="#/object/${id}/${kk}" style="text-decoration:none;${kk === tab ? 'color:#fff' : 'color:inherit'}">${l}</a>`).join('')}</div>`;
     let body = '';
     if (tab === 'summary') body = `<div class="kpis">
       ${kpi('Площадь по ДДА', fmt(o.area) + ' м²', `продуктивная ${pct0(productive / o.area)}`)}
@@ -2189,6 +2193,51 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     location.hash = woHref(w);
   }
 
+  // ================= НОВАЯ ВЕРСИЯ: рабочее место по роли =================
+  const UI = () => state.ui || 'full';
+  const ROLE_NAV = { lease: ['today', 'objects', 'lease'], ops: ['today', 'repairs', 'ops', 'objects'], pm: ['today', 'projects', 'defects', 'acceptances'], svc: ['today', 'repairs'] };
+  const ROLE_TABS = { lease: ['summary', 'units', 'lease', 'areas', 'costs', 'contacts'], ops: ['summary', 'assets', 'ops', 'resp', 'passport'], pm: ['summary', 'projects', 'arch'], svc: ['summary', 'assets'] };
+  const roleNav = () => (UI() === 'role' ? ROLE_NAV[state.role] || null : null);
+  const navAllowed = (r) => { const n = roleNav(); if (!n) return r !== 'today'; const base = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', wo: 'repairs', unit: 'repairs' }[r] || r; return n.includes(base) || r === 'about'; };
+  const actRow = (title, sub, due, href, cls) => `<a class="click" href="${href}" style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);text-decoration:none;color:inherit"><div><b>${title}</b><div class="muted small">${sub}</div></div><div class="${cls || ''}" style="text-align:right;white-space:nowrap">${due}</div></a>`;
+  const list = (rows, empty = 'Ничего не требует действия') => (rows.length ? rows.join('') : `<div class="muted" style="padding:8px 0">${empty}</div>`);
+  V.today = () => {
+    const r = state.role, who = ROLES[r];
+    const head = (t, s) => `<h1>${t}</h1><div class="sub">${s} · <span class="muted">в системе список строится по локациям сотрудника из Staff; в демо — по текущим фильтрам</span></div>`;
+    if (r === 'lease') {
+      const objs = fLocs().filter((o) => o.card.leaseStatus === 'В аренде');
+      const ev = [];
+      objs.forEach((o) => { const l = leaseDaysLeft(o); if (l < 365) ev.push({ o, what: l < 0 ? 'Договор истёк, статус «в аренде»' : 'Окончание договора: нужно решение продлить / выйти', d: o.lease.end, l, cls: l < 90 ? 'bad' : 'warn' }); (o.units || []).forEach((u) => { if (/опцион/i.test(u.kind || '') && u.planEnd) { const ul = days(D.TODAY, u.planEnd); if (ul >= 0 && ul < 180) ev.push({ o, what: `Опцион ${u.rowNo || u.code}: истекает`, d: u.planEnd, l: ul, cls: 'warn' }); } }); });
+      ev.sort((a, b) => a.l - b.l);
+      const sig = auditSignals().filter((s) => s.code.startsWith('A') && objs.some((o) => o.id === s.obj));
+      return head('Сегодня · аренда', `${objs.length} локаций в работе`) + `<div class="grid g2"><div class="card"><h2>Требует решения <span class="muted small">(${ev.length})</span></h2>${list(ev.slice(0, 15).map((e) => actRow(esc(e.o.name), e.what, `${dt(e.d)}<div class="small">${e.l < 0 ? `${-e.l} дн назад` : `через ${e.l} дн`}</div>`, `#/object/${e.o.id}/lease`, e.cls)))}</div>
+      <div class="card"><h2>Расхождения по деньгам <span class="muted small">(${sig.length})</span></h2>${list(sig.slice(0, 15).map((s) => actRow(esc(OBJ[s.obj].name), esc(s.title), `<span class="${SEV[s.sev][1] || ''}">${rub(s.amount)}</span>`, `#/object/${s.obj}/costs`)), 'Расхождений нет')}</div></div>`;
+    }
+    if (r === 'ops') {
+      const os = fObjects(); const oid = new Set(os.map((o) => o.id));
+      const tk = fTickets().filter((t) => !t.resolved).sort((a, b) => a.created.localeCompare(b.created));
+      const wo = fWO().filter((w) => !w.closed);
+      const us = fUnits().filter((u) => toOverdue(u));
+      const bad = fAssets().filter((a) => a.status === 'Требует ремонта' || a.status === 'К списанию');
+      return head('Сегодня · эксплуатация', `${os.length} локаций`) + `<div class="kpis">${kpi('Открытых тикетов', tk.length, `просрочено SLA: ${tk.filter((t) => days(t.created, D.TODAY) * 24 > t.slaH).length}`)}${kpi('Открытых нарядов', wo.length, `ждут запчасти ${wo.filter((w) => w.status === 'Ждёт запчасти').length}`)}${kpi('ТО просрочено', `<span class="${us.length ? 'bad' : ''}">${us.length}</span>`)}${kpi('Оборудование к ремонту', bad.length)}</div>
+      <div class="grid g2"><div class="card"><h2>Тикеты ${src('ТРЕКЕР')}</h2>${list(tk.slice(0, 12).map((t) => actRow(esc(t.summary), `${esc(OBJ[t.object].name)} · ${esc(t.category)} · ${esc(t.priority)}`, `${days(t.created, D.TODAY)} дн`, `#/object/${t.object}/ops`, days(t.created, D.TODAY) * 24 > t.slaH ? 'bad' : '')))}</div>
+      <div><div class="card" style="margin-bottom:14px"><h2>Наряды на ремонт ${src('HUB')} <a class="btn primary" href="#/repairs/new" style="float:right;text-decoration:none;color:#fff;padding:3px 10px">+ Наряд</a></h2>${list(wo.slice(0, 8).map((w) => actRow(`${w.id} · ${esc(w.what)}`, `${UNIT[w.unit]?.model || ''} · ${esc(OBJ[w.object].name)}`, woStatusPill(w.status), woHref(w))))}</div>
+      <div class="card"><h2>Плановое ТО просрочено</h2>${list(us.slice(0, 8).map((u) => actRow(`${esc(u.model)} · SN ${esc(u.serial)}`, esc(OBJ[u.object].name), `<span class="bad">+${toOverdue(u)} дн</span>`, unitHref(u))))}</div></div></div>`;
+    }
+    if (r === 'pm') {
+      const ps = fProjects().filter((p) => !p.done).sort((a, b) => deltaDays(b) - deltaDays(a));
+      const ds = fDefects().filter((d) => d.status === 'Просрочено' || d.status === 'Открыто').sort((a, b) => a.due.localeCompare(b.due));
+      return head('Сегодня · проекты', `${ps.length} активных проектов`) + `<div class="grid g2"><div class="card"><h2>Проекты с отставанием</h2>${list(ps.filter((p) => deltaDays(p) > 0).slice(0, 10).map((p) => actRow(`${p.id} · ${esc(OBJ[p.object].name)}`, `${esc(p.type)} · ${esc(CTR[p.contractor].name)}`, `<span class="${deltaDays(p) > 30 ? 'bad' : 'warn'}">+${deltaDays(p)} дн</span>`, `#/object/${p.object}/projects`)), 'Все проекты в графике')}</div>
+      <div class="card"><h2>Замечания подрядчикам</h2>${list(ds.slice(0, 12).map((d) => actRow(esc(d.title), `${esc(OBJ[d.object].name)} · ${esc(CTR[d.contractor].name)}`, `${d.status === 'Просрочено' ? '<span class="bad">просрочено</span><div class="small">' : '<div class="small">до '}${dt(d.due)}</div>`, `#/defects`)))}</div></div>`;
+    }
+    if (r === 'svc') {
+      const mine = fWO().filter((w) => !w.closed && w.own).slice(0, 10);
+      return `<h1>Мои наряды</h1><div class="sub">Техник видит только свои наряды и кнопку нового. Остальной системы для него нет.</div>
+      <div style="max-width:520px"><a class="btn primary" href="#/repairs/new" style="display:block;text-align:center;padding:16px;font-size:16px;text-decoration:none;color:#fff;margin-bottom:14px">📷 Сканировать QR → новый наряд</a>
+      <div class="card">${list(mine.map((w) => actRow(`${w.id} · ${esc(w.what)}`, `${UNIT[w.unit]?.model || ''} SN ${UNIT[w.unit]?.serial || ''} · ${esc(OBJ[w.object].name)}`, woStatusPill(w.status), woHref(w))), 'Открытых нарядов нет')}</div></div>`;
+    }
+    return V.overview();
+  };
   // ================= ИТ-ИНФРАСТРУКТУРА =================
   const ITCH = idx(D.itChannels, 'object');
   const ITL = idx(D.itLaunch, 'object');
@@ -2326,7 +2375,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   }
 
   // ================= КОНТРОЛЬ И АУДИТ =================
-  const ROLES = { exec: 'Руководитель', audit: 'Аудитор', control: 'Контроль и риски', pm: 'Руководитель проекта', ops: 'Эксплуатация', lease: 'Аренда' };
+  const ROLES = { exec: 'Руководитель', audit: 'Аудитор', control: 'Контроль и риски', pm: 'Руководитель проекта', ops: 'Эксплуатация', lease: 'Аренда', svc: 'Сервисник / техник' };
+  state.ui = (() => { try { return localStorage.getItem('rehub.ui') || 'full'; } catch (e) { return 'full'; } })();
   const ACCESS = { audit: ['exec', 'audit', 'control'] };
   const canSee = (route) => !ACCESS[route] || ACCESS[route].includes(state.role);
   const SEV = { crit: ['Критичный', 'bad'], high: ['Высокий', 'warn'], mid: ['Средний', 'neutral'] };
@@ -2535,14 +2585,17 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   // ---------- роутер и события ----------
   if (MIXED) document.querySelectorAll('#nav a').forEach((a) => { const r = a.dataset.r; if (r === 'about') return; const real = r === 'objects' || r === 'lease'; a.insertAdjacentHTML('beforeend', ` <span class="navtag ${real ? 'real' : ''}">${real ? 'реальные' : 'демо'}</span>`); });
   function render() {
-    let [, route = 'overview', param, sub] = location.hash.split('/');
+    let [, route = UI() === 'role' ? 'today' : 'overview', param, sub] = location.hash.split('/');
+    if (route === 'today' && UI() !== 'role') route = 'overview';
+    if (roleNav() && !navAllowed(route)) route = 'today';
     const fn = !canSee(route) ? () => `<h1>Нет доступа</h1><div class="card" style="max-width:640px"><p style="margin-top:0">Раздел доступен ролям: <b>${(ACCESS[route] || []).map((r) => ROLES[r]).join(', ')}</b>.</p><p class="muted small" style="margin-bottom:0">Ваша роль: ${ROLES[state.role]}. Доступ выдаётся через заявку на роль; все обращения к разделу пишутся в журнал.</p></div>` : V[route] || V.overview;
-    document.querySelectorAll('#nav a').forEach((a) => { a.style.display = canSee(a.dataset.r) ? '' : 'none'; });
+    document.querySelectorAll('#nav a').forEach((a) => { a.style.display = canSee(a.dataset.r) && navAllowed(a.dataset.r) ? '' : 'none'; });
     renderFilters();
     const rb = document.getElementById('rolebar'); if (rb) rb.innerHTML = READONLY_ROLES.includes(state.role) ? '<b>Режим аудитора:</b> полный просмотр, включая деньги и журнал изменений · данные только для чтения · каждое действие пишется в журнал' : '';
     if (rb) rb.style.display = rb.innerHTML ? '' : 'none';
     $('#view').innerHTML = fn(param && decodeURIComponent(param), sub && decodeURIComponent(sub));
     const navR = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', it: 'it', wo: 'repairs', unit: 'repairs' }[route] || route;
+    const ub = document.getElementById('uibar'); if (ub) ub.innerHTML = UI() === 'role' ? `<b>Новая версия:</b> рабочее место роли «${ROLES[state.role]}» — ${(roleNav() || []).length || 'все'} раздела вместо 15, первый экран «Сегодня» показывает, что требует действия. Переключите роль, чтобы увидеть другие рабочие места.` : `<b>Старая версия:</b> общее меню из 15 разделов для всех ролей.`;
     document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.r === navR));
   }
   window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
@@ -2566,6 +2619,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const reg = t.closest('[data-region]'); if (reg) { e.preventDefault(); state.region = reg.dataset.region; render(); return; }
     const ctr = t.closest('[data-ctr]'); if (ctr) { e.preventDefault(); state.defCtr = ctr.dataset.ctr; render(); return; }
     const ds = t.closest('[data-defstatus]'); if (ds) { state.defStatus = ds.dataset.defstatus; render(); return; }
+    const uib = t.closest('[data-ui]'); if (uib) { state.ui = uib.dataset.ui; try { localStorage.setItem('rehub.ui', state.ui); } catch (e) {} if (state.ui === 'role' && !navAllowed((location.hash.split('/')[1] || 'overview'))) location.hash = '#/today'; else if (state.ui === 'full' && location.hash.startsWith('#/today')) location.hash = '#/overview'; render(); return; }
     const af = t.closest('[data-afilter]'); if (af) { state.assetFilter = af.dataset.afilter; render(); return; }
     const rt = t.closest('[data-reptab]'); if (rt) { location.hash = '#/repairs/' + rt.dataset.reptab; return; }
     const rf = t.closest('[data-repfilter]'); if (rf) { state.repFilter = rf.dataset.repfilter; render(); return; }
