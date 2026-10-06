@@ -50,7 +50,7 @@ tr.click { cursor: pointer; } tr.click:hover td { background: #f7f8fb; }
 .p-acc { background: var(--accent-soft); color: var(--accent); }
 .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); }
 .src { display: inline-block; font-size: 10px; font-weight: 700; padding: 0 5px; border-radius: 4px; letter-spacing: .3px; vertical-align: middle; }
-.s1c { background: #ffe066; color: #5c4400; } .sfin { background: #b2f2bb; color: #1b5e20; } .sst { background: #a5d8ff; color: #0b3d66; } .shub { background: #d0bfff; color: #3b1e8a; }
+.s1c { background: #ffe066; color: #5c4400; } .sfin { background: #b2f2bb; color: #1b5e20; } .sst { background: #a5d8ff; color: #0b3d66; } .shub { background: #d0bfff; color: #3b1e8a; } .stm { background: #c3fae8; color: #0b6e4f; }
 .bar { height: 6px; background: #eef0f4; border-radius: 4px; overflow: hidden; min-width: 60px; }
 .bar > i { display: block; height: 100%; background: var(--accent); }
 .btn { font: inherit; border: 1px solid var(--line); background: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
@@ -128,7 +128,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       <div><span class="src s1c">1С</span> договоры, КС-2, оплаты, ОС</div>
       <div><span class="src sfin">ФИН</span> бюджеты</div>
       <div><span class="src sst">ТРЕКЕР</span> тикеты</div>
-      <div><span class="src shub">HUB</span> замечания, приёмки, планировки</div>
+      <div><span class="src shub">HUB</span> замечания, приёмки, планировки, наряды</div>
+      <div><span class="src stm">ТЕЛЕМ</span> телематика ПРТ</div>
       <div class="muted small" style="margin-top:6px">Демо-данные · срез на <span id="today"></span></div>
     </div>
   </aside>
@@ -874,6 +875,30 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   for (const w of pickN(workOrders.filter((x) => x.closed && x.total > 0), 9)) { w.ticket.sync = 'diff'; w.ticket.trackerCost = Math.round(w.total * pick([0.5, 1.3, 2]) / 100) * 100; }
   for (const w of pickN(workOrders.filter((x) => !x.closed), 6)) { w.ticket.sync = 'manual'; w.parts = []; w.photos = []; w.mh = null; w.total = 0; w.author = null; }
   workOrders.sort((a, b) => b.created.localeCompare(a.created) || b.id.localeCompare(a.id));
+  // статус единицы сейчас и часы работы по дням (в системе — телематика / ЛИС; в демо — синтетика)
+  for (const u of units) {
+    const openWo = workOrders.find((w) => w.unit === u.id && !w.closed);
+    u.status = openWo ? (openWo.status === 'Ждёт запчасти' ? 'Простой: ждёт запчасти' : openWo.status === 'В работе' ? 'В ремонте' : 'Простой: ждёт ремонта') : rnd() < 0.05 ? 'Не используется' : rnd() < 0.02 ? 'Консервация' : 'В работе';
+    u.norm = u.kind === 'ПРТ' ? pick([8, 16, 16, 16, 24]) : null; // норма: смены × 8 ч
+    if (u.kind === 'ПРТ') {
+      const base = u.norm * between(0.55, 0.95);
+      u.daily = [];
+      for (let i = 13; i >= 0; i--) {
+        const d = addDays(TODAY, -i), wd = d.getDay();
+        let h = (wd === 0 || wd === 6) && u.norm < 24 ? base * between(0, 0.5) : base * between(0.55, 1.2);
+        if (openWo && d >= new Date(openWo.created)) h = 0;
+        if (u.status === 'Не используется' || u.status === 'Консервация') h = i > 9 ? h * 0.3 : 0;
+        u.daily.push({ date: iso(d), h: Math.round(Math.min(u.norm, h) * 10) / 10 });
+      }
+      u.hoursDay = Math.round((u.daily.reduce((a, x) => a + x.h, 0) / 14) * 10) / 10;
+      u.util = Math.round((u.hoursDay / u.norm) * 100);
+      // телематика: сессии по ключ-карте за 14 дней, удары, заряд АКБ, коды ошибок
+      u.tm = { lastSync: iso(addDays(TODAY, 0)) + ' ' + String(int(0, 23)).padStart(2, '0') + ':' + String(int(0, 59)).padStart(2, '0'), impacts14: u.status === 'В работе' ? int(0, 6) : int(0, 2), hardImpacts14: 0, battery: u.status === 'В работе' ? int(35, 100) : int(0, 60), errors14: int(0, 3), operators14: int(1, 6), sessions: [] };
+      u.tm.hardImpacts14 = u.tm.impacts14 >= 4 ? int(1, 2) : 0;
+      for (const d of u.daily.slice(-5)) { let left = d.h; let t = 6 + int(0, 2); while (left > 0.5) { const h = Math.min(left, between(1.5, 4.5)); u.tm.sessions.push({ date: d.date, start: `${String(t).padStart(2, '0')}:${pick(['00', '15', '30', '45'])}`, hours: Math.round(h * 10) / 10, operator: 'KEY-' + int(1000, 9999), impacts: rnd() < 0.15 ? 1 : 0 }); left -= h; t += Math.ceil(h) + (rnd() < 0.3 ? 1 : 0); if (t > 22) break; } }
+      u.tm.sessions.reverse();
+    }
+  }
   const partsMedian = {};
   for (const w of workOrders) for (const p of w.parts) if (p.price > 0) (partsMedian[p.art] = partsMedian[p.art] || []).push(p.price);
   for (const k of Object.keys(partsMedian)) partsMedian[k] = median_(partsMedian[k]);
@@ -904,7 +929,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   const sum = (a, f) => a.reduce((s, x) => s + (typeof f === 'function' ? f(x) : x[f]), 0);
   const median = (arr) => { const s = [...arr].sort((a, b) => a - b); const m = s.length >> 1; return !s.length ? 0 : s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
   const quant = (arr, q) => { const s = [...arr].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(q * s.length))] : 0; };
-  const src = (k) => `<span class="src ${{ '1С': 's1c', 'ФИН': 'sfin', 'ТРЕКЕР': 'sst', 'HUB': 'shub' }[k]}">${k}</span>`;
+  const src = (k) => `<span class="src ${{ '1С': 's1c', 'ФИН': 'sfin', 'ТРЕКЕР': 'sst', 'HUB': 'shub', 'ТЕЛЕМ': 'stm' }[k]}">${k}</span>`;
   const pill = (t, c) => `<span class="pill p-${c}">${esc(t)}</span>`;
   const sev = (x, warn, bad) => (x >= bad ? 'bad' : x >= warn ? 'warn' : 'good');
   const person = (id) => (PPL[id] ? `<a href="#/person/${id}">${esc(PPL[id].name)}</a>` : '—');
@@ -1940,6 +1965,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   const unitWOs = (u) => D.workOrders.filter((w) => w.unit === u.id);
   const unitCost = (u, from = periodFrom()) => sum(unitWOs(u).filter((w) => w.created >= from), 'total');
   const unitMh = (u, from = periodFrom()) => (u.mh ? Math.min(u.mh, Math.round(((from === '0000' ? 2026 - u.year + 0.5 : days(from, D.TODAY) / 365) * 300 * u.hpd))) : 0);
+  const unitStatusPill = (st) => pill(st, st === 'В работе' ? 'good' : st === 'В ремонте' ? 'acc' : st.startsWith('Простой') ? 'bad' : 'neutral');
+  const spark = (u) => (u.daily ? `<svg viewBox="0 0 140 30" width="140" height="30">${u.daily.map((d, i) => `<rect x="${i * 10}" y="${30 - (d.h / u.norm) * 28}" width="8" height="${(d.h / u.norm) * 28}" rx="1" fill="${d.h === 0 ? '#c92a2a' : d.h / u.norm < 0.4 ? '#e67700' : '#3b5bdb'}"><title>${dt(d.date)}: ${d.h} ч</title></rect>`).join('')}</svg>` : '');
   const REQ_PHOTOS = { 'Плановое ТО': ['После ремонта'], 'Внеплановый ремонт': ['Повреждение', 'После ремонта'], 'Повреждение по вине': ['Повреждение', 'После ремонта'], 'Гарантийный': ['Повреждение', 'После ремонта', 'Снятая деталь'], 'Диагностика': ['Повреждение'] };
 
   // сигналы R1–R7 по нарядам и единицам
@@ -1994,7 +2021,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const open = wos.filter((w) => !w.closed), closedP = per.filter((w) => w.closed);
     const unpl = closedP.filter((w) => w.kind !== 'Плановое ТО'), mttr = unpl.length ? sum(unpl, 'downtimeH') / unpl.length : 0;
     const synced = wos.filter((w) => w.ticket.sync === 'ok').length;
-    const tabs = [['orders', 'Наряды'], ['units', 'Техника'], ['parts', 'Запчасти'], ['signals', `Сигналы (${sig.length})`], ['tracker', 'Связь с Трекером'], ['new', '+ Новый наряд с телефона']];
+    const tabs = [['orders', 'Наряды'], ['units', 'Техника'], ['parts', 'Запчасти'], ['signals', `Сигналы (${sig.length})`], ['tracker', 'Связь с Трекером'], ['telem', 'Телематика'], ['new', '+ Новый наряд с телефона']];
     let body = '';
     if (tab === 'orders') {
       const filt = state.repFilter || '';
@@ -2009,6 +2036,9 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
         { h: 'Серийный №', v: (u) => u.serial, f: (u) => `<span class="small">${esc(u.serial)}</span>` },
         { h: `Инв. № ${src('1С')}`, v: (u) => u.inv || '', f: (u) => (u.inv ? `<span class="small">${u.inv}</span>` : pill('нет в учёте', 'bad')) },
         { h: 'Локация', v: (u) => OBJ[u.object].name, f: (u) => objLink(u.object) },
+        { h: 'Статус сейчас', v: (u) => u.status, f: (u) => unitStatusPill(u.status) },
+        { h: 'Часов в день · 14 дн', num: 1, v: (u) => u.hoursDay || 0, f: (u) => (u.daily ? `<div style="display:flex;gap:6px;align-items:center;justify-content:flex-end"><b>${u.hoursDay}</b>${spark(u)}</div>` : '<span class="muted small">нет телематики</span>') },
+        { h: 'Загрузка', num: 1, v: (u) => u.util || 0, f: (u) => (u.util != null ? `<span class="${u.util < 40 ? 'bad' : u.util < 60 ? 'warn' : ''}">${u.util}%</span><div class="muted small">норма ${u.norm} ч</div>` : '—') },
         { h: 'Владение', v: (u) => u.own, f: (u) => pill(u.own, u.own === 'ОС' ? 'neutral' : 'acc') },
         { h: 'Год', num: 1, v: (u) => u.year, f: (u) => u.year },
         { h: 'Моточасы', num: 1, v: (u) => u.mh || 0, f: (u) => (u.mh ? fmt(u.mh) : '—') },
@@ -2059,10 +2089,31 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
         { h: 'В наряде', num: 1, v: (w) => w.total, f: (w) => (w.ticket.sync === 'manual' ? '<span class="bad">нет фото, запчастей, стоимости</span>' : rub(w.total)) },
         { h: 'В тикете', num: 1, v: (w) => w.ticket.trackerCost || 0, f: (w) => (w.ticket.trackerCost ? `<span class="bad">${rub(w.ticket.trackerCost)}</span>` : '—') },
       ], wos.filter((w) => w.ticket.sync === 'diff' || w.ticket.sync === 'manual'))}</div>`;
+    } else if (tab === 'telem') {
+      const prt = us.filter((u) => u.tm);
+      const fields = [['Серийный № единицы', 'ключ связи с реестром единиц (РМ-02)'], ['Сессия: ключ-карта оператора, начало, конец', 'кто и сколько работал; часы в день; простой'], ['Моточасы на конец сессии', 'стоимость моточаса, интервалы ТО, автосоздание ТО'], ['Удары (датчик ускорения), в том числе сильные', 'повреждения по вине → наряд «Повреждение по вине», виновник по ключу'], ['Заряд АКБ, циклы заряда', 'ресурс АКБ, замена до отказа'], ['Коды ошибок контроллера', 'предиктив: ошибка → наряд до поломки'], ['Предсменный чек-лист (если есть)', 'допуск к работе, дефекты до смены']];
+      body = `<div class="grid g2" style="margin-bottom:14px"><div class="card"><h2>Что берём из телематики ${src('ТЕЛЕМ')}</h2><table class="small"><thead><tr><th>Данные</th><th>Зачем</th></tr></thead><tbody>${fields.map((f) => `<tr><td><b>${f[0]}</b></td><td>${f[1]}</td></tr>`).join('')}</tbody></table><p class="muted small" style="margin-bottom:0">Загрузка раз в час; ключ — серийный № машины. Система и формат выгрузки — открытый вопрос В-39 в ТЗ. В демо данные синтетические.</p></div>
+        <div class="card"><h2>Парк ПРТ по телематике · 14 дней</h2>${hbar([{ label: 'В работе', value: prt.filter((u) => u.status === 'В работе').length, color: '#2b8a3e' }, { label: 'В ремонте', value: prt.filter((u) => u.status === 'В ремонте').length, color: '#3b5bdb' }, { label: 'Простой', value: prt.filter((u) => u.status.startsWith('Простой')).length, color: '#c92a2a' }, { label: 'Не используется / консервация', value: prt.filter((u) => u.status === 'Не используется' || u.status === 'Консервация').length, color: '#8a91a3' }], { fmtV: (v) => v + ' ед.' })}
+        <div class="kpis" style="margin-top:10px">${kpi('Средняя загрузка', pct0(prt.length ? sum(prt, 'util') / prt.length / 100 : 0))}${kpi('Ударов за 14 дн', sum(prt, (u) => u.tm.impacts14), `сильных: <span class="bad">${sum(prt, (u) => u.tm.hardImpacts14)}</span>`)}${kpi('АКБ < 30%', prt.filter((u) => u.tm.battery < 30).length)}${kpi('С кодами ошибок', prt.filter((u) => u.tm.errors14 > 0).length)}</div></div></div>
+      <div class="card">${tbl('telem', [
+        { h: 'Единица', v: (u) => u.model, f: (u) => `<a href="${unitHref(u)}"><b>${esc(u.model)}</b></a><div class="muted small">SN ${esc(u.serial)}</div>` },
+        { h: 'Локация', v: (u) => OBJ[u.object].name, f: (u) => objLink(u.object) },
+        { h: 'Статус сейчас', v: (u) => u.status, f: (u) => unitStatusPill(u.status) },
+        { h: 'Часов в день', num: 1, v: (u) => u.hoursDay, f: (u) => `<div style="display:flex;gap:6px;align-items:center;justify-content:flex-end"><b>${u.hoursDay}</b>${spark(u)}</div>` },
+        { h: 'Загрузка', num: 1, v: (u) => u.util, f: (u) => `<span class="${u.util < 40 ? 'bad' : u.util < 60 ? 'warn' : ''}">${u.util}%</span>` },
+        { h: 'Операторов', num: 1, v: (u) => u.tm.operators14, f: (u) => u.tm.operators14 },
+        { h: 'Удары / сильные', num: 1, v: (u) => u.tm.impacts14, f: (u) => `${u.tm.impacts14} / ${u.tm.hardImpacts14 ? `<span class="bad">${u.tm.hardImpacts14}</span>` : '0'}` },
+        { h: 'АКБ', num: 1, v: (u) => u.tm.battery, f: (u) => `<span class="${u.tm.battery < 30 ? 'bad' : ''}">${u.tm.battery}%</span>` },
+        { h: 'Ошибки', num: 1, v: (u) => u.tm.errors14, f: (u) => (u.tm.errors14 ? `<span class="warn">${u.tm.errors14}</span>` : '—') },
+        { h: 'Моточасы', num: 1, v: (u) => u.mh, f: (u) => fmt(u.mh) },
+        { h: 'Синхронизация', v: (u) => u.tm.lastSync, f: (u) => `<span class="muted small">${u.tm.lastSync}</span>` },
+      ], prt, { href: unitHref })}</div>`;
     } else if (tab === 'new') body = newWOForm();
     return `<h1>Ремонт и обслуживание техники</h1><div class="sub">Наряды на ремонт и ТО всей техники и оборудования с фото повреждений, ремонта и запчастей ${src('HUB')} · каждый наряд автоматически становится тикетом ${src('ТРЕКЕР')} · затраты сверяются с актами ${src('1С')}</div>
     <div class="kpis">
       ${kpi('Единиц техники', us.length, `ПРТ ${us.filter((u) => u.kind === 'ПРТ').length} · инженерное ${us.filter((u) => u.kind !== 'ПРТ').length} · <span class="${us.some((u) => !u.inv) ? 'bad' : ''}">без инв. № ${us.filter((u) => !u.inv).length}</span>`)}
+      ${kpi('Парк сейчас', `<span class="${us.some((u) => u.status.startsWith('Простой')) ? 'bad' : ''}">${us.filter((u) => u.status.startsWith('Простой')).length}</span> в простое`, `в ремонте ${us.filter((u) => u.status === 'В ремонте').length} · не используется ${us.filter((u) => u.status === 'Не используется' || u.status === 'Консервация').length} · в работе ${us.filter((u) => u.status === 'В работе').length}`)}
+      ${kpi('Загрузка ПРТ', (() => { const p = us.filter((u) => u.util != null); return p.length ? pct0(sum(p, 'util') / p.length / 100) : '—'; })(), `часов в день в среднем ${(() => { const p = us.filter((u) => u.daily); return p.length ? (sum(p, 'hoursDay') / p.length).toFixed(1) : '—'; })()} · недогружено (< 40%): ${us.filter((u) => u.util != null && u.util < 40).length} <span class="muted">· телематика</span>`)}
       ${kpi('Открытых нарядов', open.length, `ждут запчасти: ${open.filter((w) => w.status === 'Ждёт запчасти').length}`)}
       ${kpi(`Нарядов за ${PERIODS[state.repPeriod || '365']}`, per.length, `плановых ТО ${pct0(per.length ? per.filter((w) => w.kind === 'Плановое ТО').length / per.length : 0)} <span class="muted">(ориентир ≥ 80%)</span>`)}
       ${kpi('Затраты на ремонт и ТО', mln(sum(per, 'total')), `запчасти ${mln(sum(per, partsSum))} · подрядчики ${mln(sum(per.filter((w) => !w.own), (w) => w.labour.cost))}`)}
@@ -2119,11 +2170,12 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const years = 2026 - u.year, lifeCost = sum(all, 'total'), tco = u.price + lifeCost;
     return `<div class="crumbs"><a href="#/repairs">Ремонт и ТО</a> / ${objLink(u.object)} / ${u.id}</div>
     <h1>${esc(u.model)} <span class="muted" style="font-weight:400">· SN ${esc(u.serial)}</span></h1>
-    <div class="sub">${esc(u.kind)} · ${esc(u.type)} · ${esc(u.maker)} · ${pill(u.own, 'neutral')} ${od ? pill(`ТО просрочено на ${od} дн`, 'bad') : pill('ТО по графику', 'good')} ${u.inv ? '' : pill('нет в учёте 1С', 'bad')}</div>
+    <div class="sub">${esc(u.kind)} · ${esc(u.type)} · ${esc(u.maker)} · ${pill(u.own, 'neutral')} ${unitStatusPill(u.status)} ${od ? pill(`ТО просрочено на ${od} дн`, 'bad') : pill('ТО по графику', 'good')} ${u.inv ? '' : pill('нет в учёте 1С', 'bad')}</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><span class="muted small">Период:</span>${Object.entries(PERIODS).map(([k, l]) => `<button class="btn ${(state.repPeriod || '365') === k ? 'on' : ''}" data-repperiod="${k}" style="padding:3px 10px">${l}</button>`).join('')}</div>
     <div class="kpis">
       ${kpi(`Затраты за ${PERIODS[state.repPeriod || '365']}`, rub(sum(per, 'total')), `запчасти ${rub(sum(per, partsSum))} · нарядов ${per.length}`)}
       ${kpi('Стоимость моточаса', unitMh(u) ? rub(sum(per, 'total') / unitMh(u)) : '—', u.mh ? `${fmt(unitMh(u))} моточасов за период` : 'моточасы не ведутся')}
+      ${u.daily ? kpi('Часов в день · 14 дн', `${u.hoursDay} ч`, `загрузка <span class="${u.util < 40 ? 'bad' : u.util < 60 ? 'warn' : ''}">${u.util}%</span> от нормы ${u.norm} ч · телематика`) : ''}
       ${kpi('Ремонтов за период', per.filter((w) => w.kind !== 'Плановое ТО').length, `плановых ТО ${per.filter((w) => w.kind === 'Плановое ТО').length}`)}
       ${kpi('Наработка между отказами', mtbf ? mtbf + ' дн' : '—')}
       ${kpi('Простой за период', fmt(sum(per, 'downtimeH')) + ' ч')}
@@ -2143,7 +2195,9 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
         <div>Последнее ТО</div><div>${lt ? `${dt(lt.created)} · <a href="${woHref(lt)}">${lt.id}</a>` : '<span class="bad">не было</span>'}</div>
         <div>QR-этикетка</div><div><span class="small" style="font-family:monospace;background:#f3f4f7;padding:2px 6px;border-radius:4px">rehub://unit/${u.id}</span></div>
       </div></div>
-      <div class="card"><h2>Затраты по месяцам</h2>${hbar(Object.entries(months).sort().slice(-12).map(([m, v]) => ({ label: m, value: v })), { fmtV: rub })}</div>
+      <div><div class="card" style="margin-bottom:14px"><h2>Затраты по месяцам</h2>${hbar(Object.entries(months).sort().slice(-12).map(([m, v]) => ({ label: m, value: v })), { fmtV: rub })}</div>
+      ${u.tm ? `<div class="card" style="margin-bottom:14px"><h2>Телематика ${src('ТЕЛЕМ')} <span class="muted small">· синхронизация ${u.tm.lastSync}</span></h2><div class="kpis">${kpi('Ударов за 14 дн', u.tm.impacts14, u.tm.hardImpacts14 ? `<span class="bad">сильных ${u.tm.hardImpacts14} — проверить повреждения</span>` : '')}${kpi('Заряд АКБ', `<span class="${u.tm.battery < 30 ? 'bad' : ''}">${u.tm.battery}%</span>`)}${kpi('Коды ошибок', u.tm.errors14 || '—')}${kpi('Операторов за 14 дн', u.tm.operators14)}</div><h2 style="margin-top:8px">Последние сессии</h2>${tbl('sess', [{ h: 'Дата', v: (x) => x.date, f: (x) => dt(x.date) }, { h: 'Начало', v: (x) => x.start, f: (x) => x.start }, { h: 'Часов', num: 1, v: (x) => x.hours, f: (x) => x.hours }, { h: 'Ключ оператора', v: (x) => x.operator, f: (x) => `<span class="small">${x.operator}</span>` }, { h: 'Удары', num: 1, v: (x) => x.impacts, f: (x) => (x.impacts ? '<span class="bad">1</span>' : '—') }], u.tm.sessions.slice(0, 8))}</div>` : ''}
+      ${u.daily ? `<div class="card"><h2>Часы работы по дням · телематика</h2>${hbar(u.daily.map((d) => ({ label: dt(d.date), value: d.h, color: d.h === 0 ? '#c92a2a' : d.h / u.norm < 0.4 ? '#e67700' : '#3b5bdb' })), { fmtV: (v) => v + ' ч' })}<div class="legend"><span><i style="background:#c92a2a"></i>простой</span><span><i style="background:#e67700"></i>загрузка &lt; 40%</span><span>норма смены ${u.norm} ч</span></div></div>` : ''}</div>
     </div>
     <div class="card"><h2>История нарядов</h2>${tbl('uwos', woCols(false), all)}</div>`;
   };
