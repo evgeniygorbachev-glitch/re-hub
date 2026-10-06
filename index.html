@@ -115,6 +115,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       <a href="#/acceptances" data-r="acceptances">Приёмки</a>
       <a href="#/ops" data-r="ops">Эксплуатация</a>
       <a href="#/assets" data-r="assets">Оборудование и ОС</a>
+      <a href="#/repairs" data-r="repairs">Ремонт и ТО</a>
       <a href="#/it" data-r="it">ИТ-инфраструктура</a>
       <a href="#/people" data-r="people">Люди</a>
       <a href="#/audit" data-r="audit">Контроль и аудит</a>
@@ -756,7 +757,126 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     mdLog.push({ id: 'MD-' + String(i + 1).padStart(3, '0'), date: iso(when), entity: 'Подрядчик', ref: c.id, field, who, approvedBy: approved ? pick(people.filter((p) => p.id !== who && p.role !== 'Технадзор')).id : null });
   }
 
-  window.DB = { TODAY: iso(TODAY), businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets, itChannels, itDevices, itLaunch, itTickets, mdLog };
+  // ---------- Ремонт и ТО: единицы техники, наряды, запчасти, тикеты (ТЗ 5.18) ----------
+  // ПРТ — поштучно (серийный № производителя + инв. № 1С), инженерное оборудование — единицы ОС с количеством 1
+  const prtModels = [
+    // модель, тип, цена, интервал ТО (моточасы), моточасов в день
+    ['ETV-214', 'Ричтрак', 6.8e6, 1000, 14], ['ECE-225', 'Комплектовщик', 2.9e6, 1000, 12], ['ESE-120', 'Электротележка', 1.6e6, 500, 10],
+    ['EFG-220', 'Электропогрузчик', 4.2e6, 1000, 9], ['EJC-112', 'Штабелёр', 1.9e6, 500, 7],
+  ];
+  const svcCtr = ['ПРТ-Сервис', 'Складская Техника Сервис', 'ИнжСервис', 'Климат Профи', 'ЭлектроСети-М'];
+  function days_(a, b) { return Math.round((b - a) / day); }
+  const units = [];
+  let ui = 1;
+  for (const o of objects.filter((x) => x.business === 'logistics' && x.status === 'В эксплуатации')) {
+    const n = Math.max(6, Math.min(28, Math.round((o.area / 1000) * between(0.5, 0.9))));
+    for (let i = 0; i < n; i++) {
+      const [model, type, price, toInt, hpd] = pick(prtModels);
+      const age = between(0.4, 7.5), own = pick(['ОС', 'ОС', 'ОС', 'Аренда', 'Лизинг']);
+      units.push({ id: 'ЕД-' + String(ui++).padStart(5, '0'), kind: 'ПРТ', type, model, maker: 'Jungheinrich', serial: String(int(90600000, 91699999)),
+        inv: own === 'ОС' && rnd() > 0.08 ? 'ОС-П' + String(int(10000, 99999)) : null, own, object: o.id, business: o.business, region: o.region,
+        year: 2026 - Math.floor(age), mh: Math.round(age * 300 * hpd * between(0.7, 1.1)), hpd, toInt, price: Math.round(price * between(0.9, 1.1) / 1e3) * 1e3,
+        warrantyEnd: iso(addDays(TODAY, -Math.round(age * 365) + 730)), svc: svcCtr[int(0, 1)], engineer: o.opsEngineer });
+    }
+  }
+  for (const a of assets.filter((x) => x.qty === 1 && x.tcat && x.inService && x.status !== 'К списанию')) {
+    units.push({ id: 'ЕД-' + String(ui++).padStart(5, '0'), kind: 'Инженерное', type: a.category, model: a.name, maker: pick(['Systemair', 'Grundfos', 'ABB', 'Schneider', 'Daikin', 'Hörmann', 'Болид']),
+      serial: 'SN' + int(1000000, 9999999), inv: a.id, own: 'ОС', object: a.object, business: a.business, region: a.region, year: +a.inService.slice(0, 4), mh: null, hpd: null, toInt: null,
+      price: a.cost, warrantyEnd: a.warrantyEnd, svc: svcCtr[int(2, 4)], engineer: a.mol });
+  }
+  // запчасти: узел → [наименование, артикул, базовая цена]
+  const partsBy = {
+    'АКБ': [['Тяговая АКБ 48 В 465 А·ч', 'JH-51129474', 420000], ['Элемент АКБ 2 В', 'JH-50281120', 14800], ['Разъём АКБ 160 А', 'JH-50034512', 5200]],
+    'Колёса': [['Колесо опорное полиуретан', 'JH-50460155', 9800], ['Колесо ведущее Vulkollan', 'JH-50421873', 31500]],
+    'Гидравлика': [['Ремкомплект гидроцилиндра', 'JH-52051622', 24500], ['Масло гидравлическое 20 л', 'HLP-32-20', 9600], ['Фильтр гидравлический', 'JH-50132608', 3400]],
+    'Мачта': [['Цепь мачты', 'JH-50124031', 38000], ['Ролик мачты', 'JH-50011722', 7200]],
+    'Тормоза': [['Тормозная колодка', 'JH-50316112', 6200], ['Электромагнитный тормоз', 'JH-51087221', 54000]],
+    'Электроника': [['Контроллер хода', 'JH-51236743', 148000], ['Датчик скорости', 'JH-50450231', 7800], ['Пульт управления', 'JH-51418806', 66000]],
+    'Вентилятор': [['Подшипник вентилятора', 'SKF-6205-2RS', 4200], ['Ремень привода', 'SPA-1250', 2900], ['Двигатель вентилятора 4 кВт', 'ABB-M2AA-112', 68000]],
+    'Насос': [['Насос циркуляционный', 'GR-UPS-32-80', 86000], ['Уплотнение торцевое', 'GR-96525458', 11200]],
+    'Электрощит': [['Автомат 3P 250 А', 'ABB-T3N-250', 31000], ['Контактор 95 А', 'SE-LC1D95', 12400], ['УЗО 4P 63 А', 'SE-A9R12463', 9900]],
+    'Фильтры': [['Фильтр карманный F7', 'FLT-F7-592', 5100]],
+    'Привод ворот': [['Пружина торсионная', 'HR-TS-55', 7400], ['Привод ворот', 'HR-WA400', 74000]],
+  };
+  const nodesBy = (u) => (u.kind === 'ПРТ' ? ['АКБ', 'Колёса', 'Гидравлика', 'Мачта', 'Тормоза', 'Электроника'] : u.type === 'Двери и ворота' ? ['Привод ворот', 'Электроника'] : u.type === 'Электрооборудование' ? ['Электрощит'] : u.type === 'Тепло- и водоснабжение' ? ['Насос', 'Электрощит'] : ['Вентилятор', 'Фильтры', 'Электрощит']);
+  const whatBy = { 'АКБ': ['Быстро садится АКБ', 'Не заряжается', 'Окислены клеммы'], 'Колёса': ['Износ опорных колёс', 'Разрушено ведущее колесо'], 'Гидравлика': ['Течь гидравлики', 'Не поднимает вилы', 'Медленный подъём'], 'Мачта': ['Рывки при подъёме', 'Повреждена цепь'], 'Тормоза': ['Слабое торможение', 'Скрип тормозов'], 'Электроника': ['Ошибка контроллера', 'Не запускается', 'Не работает пульт'], 'Вентилятор': ['Шум и вибрация', 'Не крутится вентилятор'], 'Насос': ['Насос не держит давление', 'Течь насоса'], 'Электрощит': ['Срабатывает автомат', 'Нагрев контактов'], 'Фильтры': ['Засорены фильтры'], 'Привод ворот': ['Ворота не поднимаются', 'Лопнула пружина'] };
+  const median_ = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+  const mkPart = ([name, art, p], source, fate, qty = 1) => ({ name, art, qty, price: Math.round(p * between(0.9, 1.1) / 10) * 10, source, fate });
+  const woTotal = (w) => (w.own ? 0 : w.labour.cost) + w.parts.reduce((s, p) => s + p.qty * p.price, 0);
+  const workOrders = [];
+  let wi = 1, tki = 41400;
+  const engs = byRole('Инженер эксплуатации');
+  const mkOrder = (u, d, kind) => {
+    const node = kind === 'Плановое ТО' ? null : pick(nodesBy(u));
+    const open = days_(d, TODAY) < 12 && rnd() < 0.6;
+    const dur = kind === 'Плановое ТО' ? between(2, 6) : between(3, 72);
+    const own = rnd() < (u.kind === 'ПРТ' ? 0.35 : 0.55);
+    const parts = [];
+    if (kind === 'Плановое ТО') {
+      if (u.kind === 'ПРТ') parts.push(mkPart(partsBy['Гидравлика'][1], 'Сервисный договор', 'Утилизирована'), mkPart(partsBy['Гидравлика'][2], 'Сервисный договор', 'Утилизирована'));
+      else parts.push(mkPart(partsBy['Фильтры'][0], 'Склад ЗИП', 'Утилизирована', int(2, 6)));
+    } else if (rnd() < 0.8) for (const p of pickN(partsBy[node], int(1, 2))) parts.push(mkPart(p, pick(['Склад ЗИП', 'Закупка', 'Закупка', 'Сервисный договор']), pick(['Утилизирована', 'Утилизирована', 'Забрал сервисник', 'Возвращена на склад']), p[1] === 'JH-50460155' ? int(1, 4) : 1));
+    const created = iso(d), inWarranty = u.warrantyEnd && created <= u.warrantyEnd;
+    const warrantyCase = inWarranty && kind === 'Внеплановый ремонт' && rnd() < 0.5;
+    if (warrantyCase) parts.forEach((p) => { p.source = 'Гарантия'; p.price = 0; });
+    const hours = Math.round(kind === 'Плановое ТО' ? between(2, 5) : between(1, 9)), rate = own ? 1400 : 3200;
+    const author = rnd() < 0.7 ? u.engineer : pick(engs).id;
+    const closed = open ? null : iso(addDays(d, Math.ceil(dur / 24)));
+    const wo = { id: 'НР-' + String(wi++).padStart(6, '0'), unit: u.id, object: u.object, business: u.business, region: u.region, kind: warrantyCase ? 'Гарантийный' : kind,
+      node, what: node ? pick(whatBy[node]) : `ТО-${u.toInt || 'полугодовое'} по регламенту`, damage: kind === 'Повреждение по вине' ? 'Удар' : node ? pick(['Износ', 'Поломка', 'Износ']) : null,
+      created, closed, status: closed ? 'Закрыт' : pick(['Новый', 'В работе', 'В работе', 'Ждёт запчасти']), mh: u.mh ? Math.round(u.mh - days_(d, TODAY) * u.hpd * 0.85) : null,
+      downtimeH: Math.round(dur), own, executor: own ? (rnd() < 0.7 ? u.engineer : pick(engs).id) : u.svc, author,
+      labour: { h: hours, cost: hours * rate }, parts, act1c: null, actSum: null };
+    const conf = engs.filter((p) => p.id !== wo.executor && p.id !== author);
+    wo.confirmedBy = closed ? pick(conf.length ? conf : engs).id : null;
+    if (!own && closed && !warrantyCase) wo.act1c = 'АКТ-' + int(10000, 99999);
+    wo.photos = [{ stage: 'Повреждение', seed: wo.id + 'd' }];
+    if (closed) wo.photos.push({ stage: 'После ремонта', seed: wo.id + 'a', fixed: true });
+    if (parts.length && closed) wo.photos.push({ stage: 'Снятая деталь', seed: wo.id + 'o', part: true }, { stage: 'Установленная деталь', seed: wo.id + 'n', part: true, fixed: true });
+    if (u.kind === 'ПРТ') wo.photos.push({ stage: 'Счётчик моточасов', seed: wo.id + 'm', meter: true });
+    wo.ticket = { key: 'EXPL-' + tki++, queue: 'EXPL', type: u.kind === 'ПРТ' ? 'repair' : 'task', sync: open && days_(d, TODAY) < 2 && rnd() < 0.5 ? 'pending' : 'ok' };
+    wo.total = woTotal(wo);
+    if (wo.act1c) wo.actSum = wo.total;
+    workOrders.push(wo);
+    return wo;
+  };
+  for (const u of units) {
+    // плановое ТО: ПРТ по моточасам, инженерное — раз в полгода; у части единиц ТО пропущено
+    const toEvery = u.kind === 'ПРТ' ? Math.round(u.toInt / u.hpd / 0.85) : 182;
+    const skip = rnd() < 0.08;
+    for (let d = addDays(TODAY, -365 + int(0, toEvery)); d < TODAY; d = addDays(d, toEvery)) {
+      if (skip && days_(d, TODAY) < toEvery * 1.6) break;
+      mkOrder(u, d, 'Плановое ТО');
+    }
+    const ageK = u.kind === 'ПРТ' ? 1 + (2026 - u.year) * 0.18 : 1;
+    const nFail = Math.round((u.kind === 'ПРТ' ? between(1, 4.5) : between(0, 2)) * ageK);
+    for (let i = 0; i < nFail; i++) mkOrder(u, addDays(TODAY, -int(0, 364)), rnd() < 0.12 && u.kind === 'ПРТ' ? 'Повреждение по вине' : 'Внеплановый ремонт');
+  }
+  const UNIT = Object.fromEntries(units.map((u) => [u.id, u]));
+  // ----- заложенные схемы (сигналы R1–R7) -----
+  const closedPRT = workOrders.filter((w) => w.closed && w.node && UNIT[w.unit].kind === 'ПРТ');
+  // R1: повторный ремонт того же узла < 30 дн
+  for (const w of pickN(closedPRT.filter((x) => days_(new Date(x.closed), TODAY) > 40), 6)) { const r = mkOrder(UNIT[w.unit], addDays(new Date(w.closed), int(4, 25)), 'Внеплановый ремонт'); r.node = w.node; r.what = w.what + ' (повторно)'; }
+  // R2: одна деталь дважды за 90 дн
+  for (const w of pickN(closedPRT.filter((x) => x.parts.length && x.parts[0].price > 0 && days_(new Date(x.created), TODAY) > 100), 5)) { const r = mkOrder(UNIT[w.unit], addDays(new Date(w.created), int(20, 70)), 'Внеплановый ремонт'); r.node = w.node; r.what = w.what; r.parts = [{ ...w.parts[0] }]; r.total = woTotal(r); if (r.act1c) r.actSum = r.total; }
+  // R3: одно фото в разных нарядах
+  for (const w of pickN(closedPRT, 4)) { const twin = closedPRT.find((x) => x.node === w.node && x.id !== w.id && x.object !== w.object); if (twin) w.photos[0] = { ...twin.photos[0], copyOf: twin.id }; }
+  // R4: завышенная цена запчасти
+  for (const w of pickN(workOrders.filter((x) => x.parts.some((p) => p.price > 20000 && p.source === 'Закупка')), 7)) { const p = w.parts.find((q) => q.price > 20000 && q.source === 'Закупка'); p.price = Math.round(p.price * between(1.4, 1.9) / 10) * 10; w.total = woTotal(w); if (w.act1c) w.actSum = w.total; }
+  // R6: наряд с суммой без акта 1С; акт расходится с нарядом
+  for (const w of pickN(workOrders.filter((x) => x.closed && x.act1c && days_(new Date(x.closed), TODAY) > 45), 6)) { w.act1c = null; w.actSum = null; }
+  for (const w of pickN(workOrders.filter((x) => x.act1c && x.total > 30000), 5)) w.actSum = Math.round(w.total * between(1.12, 1.35) / 100) * 100;
+  // R7: исполнитель сам подтвердил закрытие
+  for (const w of pickN(workOrders.filter((x) => x.closed && x.own), 5)) w.confirmedBy = w.executor;
+  // связь с Трекером: стоимость поправили в тикете вручную; тикеты, заведённые в Трекере без наряда
+  for (const w of pickN(workOrders.filter((x) => x.closed && x.total > 0), 9)) { w.ticket.sync = 'diff'; w.ticket.trackerCost = Math.round(w.total * pick([0.5, 1.3, 2]) / 100) * 100; }
+  for (const w of pickN(workOrders.filter((x) => !x.closed), 6)) { w.ticket.sync = 'manual'; w.parts = []; w.photos = []; w.mh = null; w.total = 0; w.author = null; }
+  workOrders.sort((a, b) => b.created.localeCompare(a.created) || b.id.localeCompare(a.id));
+  const partsMedian = {};
+  for (const w of workOrders) for (const p of w.parts) if (p.price > 0) (partsMedian[p.art] = partsMedian[p.art] || []).push(p.price);
+  for (const k of Object.keys(partsMedian)) partsMedian[k] = median_(partsMedian[k]);
+
+  window.DB = { TODAY: iso(TODAY), businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets, itChannels, itDevices, itLaunch, itTickets, mdLog, units, workOrders, partsMedian };
 })();
 </script>
   <script>
@@ -847,7 +967,11 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       if (kind === 'fire') g += `<rect x="${fx - 18}" y="${fy - 20}" width="36" height="110" rx="14" fill="#c92a2a"/><rect x="${fx - 8}" y="${fy - 38}" width="16" height="20" fill="#333"/><rect x="${fx + 40}" y="${fy - 10}" width="70" height="40" fill="none" stroke="#c92a2a" stroke-dasharray="6 5" stroke-width="3"/>`;
       if (kind === 'debris') for (let i = 0; i < 14; i++) { const x = r() * W, y = 170 + r() * 110; g += `<polygon points="${x},${y} ${x + 10 + r() * 30},${y + r() * 10} ${x + r() * 20},${y - 10 - r() * 20}" fill="rgb(${90 + r() * 80},${80 + r() * 60},${60 + r() * 50})"/>`; }
       if (kind === 'site') { g += `<rect y="${H * 0.62}" width="${W}" height="${H * 0.38}" fill="#8f8a82"/>`; for (let i = 0; i < 5; i++) g += `<rect x="${30 + i * 85}" y="40" width="22" height="${H * 0.62 - 40}" fill="#a9a59d" stroke="#777"/>`; g += `<line x1="0" y1="40" x2="${W}" y2="40" stroke="#666" stroke-width="6"/>`; for (let i = 0; i < 6; i++) g += `<line x1="${W / 2}" y1="${H * 0.62}" x2="${i * 80}" y2="${H}" stroke="#7a756d"/>`; }
-      if (kind !== 'site') g += `<ellipse cx="${fx}" cy="${fy}" rx="105" ry="75" fill="none" stroke="#ff2d2d" stroke-width="4"/>`;
+      if (kind === 'prt') { g += `<rect y="${H * 0.7}" width="${W}" height="${H * 0.3}" fill="#6f6a62"/><rect x="${fx - 90}" y="${fy - 10}" width="150" height="90" rx="8" fill="#e8a500"/><rect x="${fx - 80}" y="${fy - 70}" width="60" height="70" fill="#2a2a2a"/><rect x="${fx + 60}" y="${fy - 110}" width="14" height="190" fill="#444"/><rect x="${fx + 74}" y="${fy + 70}" width="90" height="8" fill="#333"/><circle cx="${fx - 60}" cy="${fy + 86}" r="18" fill="#222"/><circle cx="${fx + 30}" cy="${fy + 86}" r="18" fill="#222"/>`; }
+      if (kind === 'equip') { g += `<rect x="${fx - 90}" y="${fy - 70}" width="180" height="150" rx="6" fill="#8d97a3" stroke="#3b4350" stroke-width="3"/><rect x="${fx - 70}" y="${fy - 50}" width="140" height="40" fill="#2b2f36"/><circle cx="${fx - 50}" cy="${fy + 40}" r="10" fill="#c92a2a"/><circle cx="${fx - 20}" cy="${fy + 40}" r="10" fill="#2b8a3e"/>`; }
+      if (kind === 'part') { g += `<rect x="${fx - 110}" y="${fy - 60}" width="220" height="140" rx="10" fill="#d9d4cc" opacity=".7"/><circle cx="${fx}" cy="${fy}" r="46" fill="#55595f" stroke="#222" stroke-width="4"/><circle cx="${fx}" cy="${fy}" r="14" fill="#2a2a2a"/>`; for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; g += `<rect x="${fx + Math.cos(a) * 50 - 6}" y="${fy + Math.sin(a) * 50 - 6}" width="12" height="12" fill="#55595f" transform="rotate(${(a * 180) / Math.PI} ${fx + Math.cos(a) * 50} ${fy + Math.sin(a) * 50})"/>`; } g += `<rect x="${fx + 60}" y="${fy - 55}" width="48" height="22" fill="#fff" stroke="#999"/><text x="${fx + 64}" y="${fy - 40}" font-size="9" font-family="monospace">${esc(String(seed).slice(-6))}</text>`; }
+      if (kind === 'meter') { g += `<rect x="${fx - 100}" y="${fy - 40}" width="200" height="80" rx="8" fill="#1b1f27"/><rect x="${fx - 88}" y="${fy - 26}" width="176" height="52" fill="#9ad28f"/><text x="${fx + 80}" y="${fy + 14}" font-size="34" font-family="monospace" text-anchor="end" fill="#0f2b0c">${String(Math.floor(r() * 20000)).padStart(5, '0')}</text><text x="${fx - 84}" y="${fy + 36}" font-size="10" fill="#aaa">h</text>`; }
+      if (kind !== 'site' && kind !== 'meter') g += `<ellipse cx="${fx}" cy="${fy}" rx="105" ry="75" fill="none" stroke="#ff2d2d" stroke-width="4"/>`;
     } else {
       g += `<rect x="${fx - 80}" y="${fy - 50}" width="160" height="100" fill="${wall}" opacity=".6"/><circle cx="${W - 40}" cy="40" r="20" fill="#2b8a3e"/><path d="M${W - 50} 40 l7 8 l14 -16" stroke="#fff" stroke-width="4" fill="none"/>`;
     }
@@ -1786,6 +1910,285 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     ], a.repairs, { empty: 'Ремонтов и ТО не было' })}</div>`;
   };
 
+  // ================= РЕМОНТ И ТО (ТЗ 5.18) =================
+  const UNIT = idx(D.units), WOI = idx(D.workOrders);
+  const unitHref = (u) => `#/unit/${encodeURIComponent(typeof u === 'string' ? u : u.id)}`;
+  const woHref = (w) => `#/wo/${encodeURIComponent(typeof w === 'string' ? w : w.id)}`;
+  const unitLabel = (uid) => { const u = UNIT[uid]; return u ? `<a href="${unitHref(u)}"><b>${esc(u.model)}</b></a> <span class="muted small">${esc(u.kind === 'ПРТ' ? u.type : u.type)} · SN ${esc(u.serial)}</span>` : '—'; };
+  const fUnits = () => { const os = new Set(fObjects().map((o) => o.id)); return D.units.filter((u) => os.has(u.object)); };
+  const fWO = () => { const os = new Set(fObjects().map((o) => o.id)); return D.workOrders.filter((w) => os.has(w.object)); };
+  const PERIODS = { 30: '30 дней', 90: '90 дней', 365: '12 месяцев', all: 'всё время' };
+  const periodFrom = () => { const p = state.repPeriod || '365'; return p === 'all' ? '0000' : isoAdd(-+p); };
+  const isoAdd = (n) => new Date(new Date(D.TODAY).getTime() + n * 864e5).toISOString().slice(0, 10);
+  const inPeriod = (w) => w.created >= periodFrom();
+  const woStatusPill = (s) => pill(s, { 'Закрыт': 'good', 'В работе': 'acc', 'Новый': 'neutral', 'Ждёт запчасти': 'warn' }[s] || 'neutral');
+  const woKindPill = (k) => pill(k, { 'Плановое ТО': 'neutral', 'Внеплановый ремонт': 'warn', 'Повреждение по вине': 'bad', 'Гарантийный': 'acc', 'Диагностика': 'neutral' }[k] || 'neutral');
+  const SYNC = { ok: ['синхронизирован', 'good'], pending: ['ждёт отправки (офлайн)', 'warn'], diff: ['расхождение с тикетом', 'bad'], manual: ['создан в Трекере, нет наряда', 'bad'] };
+  const syncPill = (w) => pill(SYNC[w.ticket.sync][0], SYNC[w.ticket.sync][1]);
+  const execLabel = (w) => (w.own ? person(w.executor) : `<span>${esc(w.executor)}</span> <span class="muted small">подрядчик</span>`);
+  const toEvery = (u) => (u.kind === 'ПРТ' ? Math.round(u.toInt / u.hpd / 0.85) : 182);
+  const lastTO = (u) => D.workOrders.find((w) => w.unit === u.id && w.kind === 'Плановое ТО');
+  const toOverdue = (u) => { const t = lastTO(u); const d = t ? days(t.created, D.TODAY) : 999; return d > toEvery(u) * 1.1 ? d - toEvery(u) : 0; };
+  const partsSum = (w) => w.parts.reduce((s, p) => s + p.qty * p.price, 0);
+  const unitWOs = (u) => D.workOrders.filter((w) => w.unit === u.id);
+  const unitCost = (u, from = periodFrom()) => sum(unitWOs(u).filter((w) => w.created >= from), 'total');
+  const unitMh = (u, from = periodFrom()) => (u.mh ? Math.min(u.mh, Math.round(((from === '0000' ? 2026 - u.year + 0.5 : days(from, D.TODAY) / 365) * 300 * u.hpd))) : 0);
+  const REQ_PHOTOS = { 'Плановое ТО': ['После ремонта'], 'Внеплановый ремонт': ['Повреждение', 'После ремонта'], 'Повреждение по вине': ['Повреждение', 'После ремонта'], 'Гарантийный': ['Повреждение', 'После ремонта', 'Снятая деталь'], 'Диагностика': ['Повреждение'] };
+
+  // сигналы R1–R7 по нарядам и единицам
+  let repSigCache = null;
+  function repSignals() {
+    if (repSigCache) return repSigCache;
+    const out = [], add = (code, title, w, sev, amount = 0, uid = null) => out.push({ code, title, wo: w ? w.id : null, unit: uid || (w && w.unit), object: w ? w.object : UNIT[uid].object, sev, amount });
+    const byUnit = {}; D.workOrders.forEach((w) => (byUnit[w.unit] = byUnit[w.unit] || []).push(w));
+    for (const w of D.workOrders) {
+      if (w.ticket.sync === 'manual') continue;
+      const same = byUnit[w.unit];
+      if (w.node && same.some((x) => x.id !== w.id && x.node === w.node && x.closed && x.closed < w.created && days(x.closed, w.created) < 30)) add('R1', `Повторный ремонт узла «${w.node}» через < 30 дней`, w, 'medium', w.total);
+      const CONSUM = new Set(['HLP-32-20', 'JH-50132608', 'FLT-F7-592']);
+      if (w.kind !== 'Плановое ТО') for (const p of w.parts) {
+        if (CONSUM.has(p.art)) continue;
+        if (same.some((x) => x.id !== w.id && x.kind !== 'Плановое ТО' && x.created < w.created && days(x.created, w.created) <= 90 && x.parts.some((q) => q.art === p.art))) { add('R2', `Деталь ${p.art} заменена второй раз за 90 дней`, w, 'high', p.qty * p.price); break; }
+      }
+      if (w.photos.some((p) => p.copyOf)) add('R3', `Фото повреждения совпадает с нарядом ${w.photos.find((p) => p.copyOf).copyOf}`, w, 'critical', w.total);
+      for (const p of w.parts) { const m = D.partsMedian[p.art]; if (m && p.price > m * 1.25) { add('R4', `${p.name}: ${rub(p.price)} против медианы ${rub(m)} (индекс ${(p.price / m).toFixed(2)})`, w, 'medium', (p.price - m) * p.qty); break; } }
+      if (w.closed && !w.own && w.total > 0 && !w.act1c && days(w.closed, D.TODAY) > 45) add('R6', `Наряд на ${rub(w.total)} закрыт ${dt(w.closed)}, акта 1С нет`, w, 'high', w.total);
+      if (w.act1c && w.actSum && Math.abs(w.actSum - w.total) / w.total > 0.05) add('R6', `Акт 1С ${w.act1c} на ${rub(w.actSum)}, наряд на ${rub(w.total)}`, w, 'high', w.actSum - w.total);
+      if (w.closed && w.confirmedBy && (w.confirmedBy === w.executor || w.confirmedBy === w.author)) add('R7', 'Закрытие подтвердил исполнитель или автор наряда', w, 'critical', w.total);
+      if (w.ticket.sync === 'diff') add('T1', `Стоимость в тикете ${rub(w.ticket.trackerCost)} исправлена вручную, в наряде ${rub(w.total)}`, w, 'high', w.ticket.trackerCost - w.total);
+    }
+    for (const u of D.units) { const od = toOverdue(u); if (od) add('R5', `Плановое ТО просрочено на ${od} дн`, null, 'medium', 0, u.id); }
+    for (const w of D.workOrders.filter((x) => x.ticket.sync === 'manual')) add('T2', 'Тикет заведён в Трекере без наряда: нет фото, запчастей и стоимости', w, 'medium', 0);
+    return (repSigCache = out);
+  }
+  const RSEV = { critical: ['критичный', 'bad'], high: ['высокий', 'bad'], medium: ['средний', 'warn'] };
+  const RCODES = { R1: 'Повторный ремонт узла', R2: 'Частая замена детали', R3: 'Повтор фото', R4: 'Дорогая запчасть', R5: 'Пропущено ТО', R6: 'Наряд без акта / расхождение с актом', R7: 'Сам себе принял', T1: 'Правка в тикете вручную', T2: 'Тикет без наряда' };
+
+  const photoImg = (w, p, big) => { const u = UNIT[w.unit]; const kind = p.part ? 'part' : p.meter ? 'meter' : u && u.kind === 'ПРТ' ? 'prt' : 'equip'; const srcImg = photo(kind, p.seed, `${p.stage} · ${w.id} · ${dt(w.created)}`, !!p.fixed); return `<div><div class="muted small">${esc(p.stage)}${p.copyOf ? ` <span class="bad">· совпадает с ${p.copyOf}</span>` : ''}</div><img src="${srcImg}" data-photo="1" style="width:100%;border-radius:8px;cursor:zoom-in;${p.copyOf ? 'outline:3px solid #c92a2a' : ''}"/></div>`; };
+
+  function woCols(withUnit = true) {
+    return [
+      { h: 'Наряд', v: (w) => w.id, f: (w) => `<a href="${woHref(w)}"><b>${w.id}</b></a><div class="muted small">${dt(w.created)}${w.closed ? ' → ' + dt(w.closed) : ''}</div>` },
+      ...(withUnit ? [{ h: 'Единица', v: (w) => UNIT[w.unit]?.model || '', f: (w) => unitLabel(w.unit) }, { h: 'Локация', v: (w) => OBJ[w.object].name, f: (w) => objLink(w.object) }] : []),
+      { h: 'Вид', v: (w) => w.kind, f: (w) => woKindPill(w.kind) },
+      { h: 'Что случилось', v: (w) => w.what, f: (w) => `${esc(w.what)}${w.node ? `<div class="muted small">${esc(w.node)}${w.damage ? ' · ' + esc(w.damage) : ''}</div>` : ''}` },
+      { h: 'Статус', v: (w) => w.status, f: (w) => woStatusPill(w.status) },
+      { h: 'Исполнитель', v: (w) => (w.own ? PPL[w.executor]?.name : w.executor) || '', f: execLabel },
+      { h: 'Фото', num: 1, v: (w) => w.photos.length, f: (w) => (w.photos.length ? w.photos.length : `<span class="bad">нет</span>`) },
+      { h: 'Запчасти', num: 1, v: partsSum, f: (w) => (w.parts.length ? `${w.parts.length} поз. · ${rub(partsSum(w))}` : '—') },
+      { h: 'Сумма', num: 1, v: (w) => w.total, f: (w) => (w.total ? rub(w.total) : w.kind === 'Гарантийный' ? pill('гарантия', 'acc') : w.own ? '<span class="muted small">свои силы</span>' : '—') },
+      { h: `Тикет ${src('ТРЕКЕР')}`, v: (w) => w.ticket.sync, f: (w) => `<span class="small">${w.ticket.key}</span><div>${syncPill(w)}</div>` },
+      { h: `Акт ${src('1С')}`, v: (w) => w.act1c || '', f: (w) => (w.act1c ? `<span class="small">${w.act1c}</span>${w.actSum && Math.abs(w.actSum - w.total) > w.total * 0.05 ? `<div class="bad small">${rub(w.actSum)}</div>` : ''}` : w.closed && w.total > 0 && !w.own && days(w.closed, D.TODAY) > 45 ? '<span class="bad small">нет акта</span>' : '—') },
+    ];
+  }
+
+  V.repairs = (tab = 'orders') => {
+    const wos = fWO(), us = fUnits(), per = wos.filter(inPeriod), sig = repSignals().filter((s) => fObjects().some((o) => o.id === s.object));
+    const open = wos.filter((w) => !w.closed), closedP = per.filter((w) => w.closed);
+    const unpl = closedP.filter((w) => w.kind !== 'Плановое ТО'), mttr = unpl.length ? sum(unpl, 'downtimeH') / unpl.length : 0;
+    const synced = wos.filter((w) => w.ticket.sync === 'ok').length;
+    const tabs = [['orders', 'Наряды'], ['units', 'Техника'], ['parts', 'Запчасти'], ['signals', `Сигналы (${sig.length})`], ['tracker', 'Связь с Трекером'], ['new', '+ Новый наряд с телефона']];
+    let body = '';
+    if (tab === 'orders') {
+      const filt = state.repFilter || '';
+      const F = { '': ['Все', () => true], open: ['Открытые', (w) => !w.closed], unpl: ['Внеплановые', (w) => w.kind === 'Внеплановый ремонт' || w.kind === 'Повреждение по вине'], to: ['Плановое ТО', (w) => w.kind === 'Плановое ТО'], warr: ['Гарантийные', (w) => w.kind === 'Гарантийный'], noact: ['Без акта 1С', (w) => w.closed && w.total > 0 && !w.act1c && days(w.closed, D.TODAY) > 45], diff: ['Расхождения с Трекером', (w) => w.ticket.sync === 'diff' || w.ticket.sync === 'manual'], nophoto: ['Без фото', (w) => !w.photos.length] };
+      const rows = per.filter(F[filt][1]);
+      body = `<div class="tabs">${Object.entries(F).map(([k, [l, fn]]) => `<button class="btn ${filt === k ? 'on' : ''}" data-repfilter="${k}">${l} (${per.filter(fn).length})</button>`).join('')}</div>
+      <div class="card">${tbl('wos', woCols(), rows.slice(0, 300))}${rows.length > 300 ? `<div class="muted small" style="margin-top:8px">Показаны 300 из ${rows.length}</div>` : ''}</div>`;
+    } else if (tab === 'units') {
+      const rows = us;
+      body = `<div class="card"><h2>Единицы техники и оборудования · затраты за ${PERIODS[state.repPeriod || '365']}</h2>${tbl('units', [
+        { h: 'Единица', v: (u) => u.model, f: (u) => `<a href="${unitHref(u)}"><b>${esc(u.model)}</b></a><div class="muted small">${esc(u.type)} · ${esc(u.maker)}</div>` },
+        { h: 'Серийный №', v: (u) => u.serial, f: (u) => `<span class="small">${esc(u.serial)}</span>` },
+        { h: `Инв. № ${src('1С')}`, v: (u) => u.inv || '', f: (u) => (u.inv ? `<span class="small">${u.inv}</span>` : pill('нет в учёте', 'bad')) },
+        { h: 'Локация', v: (u) => OBJ[u.object].name, f: (u) => objLink(u.object) },
+        { h: 'Владение', v: (u) => u.own, f: (u) => pill(u.own, u.own === 'ОС' ? 'neutral' : 'acc') },
+        { h: 'Год', num: 1, v: (u) => u.year, f: (u) => u.year },
+        { h: 'Моточасы', num: 1, v: (u) => u.mh || 0, f: (u) => (u.mh ? fmt(u.mh) : '—') },
+        { h: 'Нарядов', num: 1, v: (u) => unitWOs(u).filter(inPeriod).length, f: (u) => { const a = unitWOs(u).filter(inPeriod); const n = a.filter((w) => w.kind !== 'Плановое ТО').length; return `${a.length} <span class="muted small">· ремонтов ${n}</span>`; } },
+        { h: 'ТО', v: (u) => toOverdue(u), f: (u) => (toOverdue(u) ? pill(`просрочено ${toOverdue(u)} дн`, 'bad') : pill('по графику', 'good')) },
+        { h: 'Простой, ч', num: 1, v: (u) => sum(unitWOs(u).filter(inPeriod), 'downtimeH'), f: (u) => fmt(sum(unitWOs(u).filter(inPeriod), 'downtimeH')) },
+        { h: 'Затраты', num: 1, v: (u) => unitCost(u), f: (u) => (unitCost(u) ? rub(unitCost(u)) : '—') },
+        { h: '₽ / моточас', num: 1, v: (u) => (unitMh(u) ? unitCost(u) / unitMh(u) : 0), f: (u) => (unitMh(u) ? rub(unitCost(u) / unitMh(u)) : '<span class="muted small">нет моточасов</span>') },
+        { h: 'Сигналы', num: 1, v: (u) => sig.filter((s) => s.unit === u.id).length, f: (u) => { const n = sig.filter((s) => s.unit === u.id).length; return n ? `<span class="bad">${n}</span>` : '—'; } },
+      ], rows, { href: unitHref })}</div>`;
+    } else if (tab === 'parts') {
+      const byArt = {};
+      for (const w of per) for (const p of w.parts) { const b = (byArt[p.art] = byArt[p.art] || { art: p.art, name: p.name, qty: 0, sum: 0, prices: [], n: 0, max: 0, maxWo: null }); b.qty += p.qty; b.sum += p.qty * p.price; b.n++; if (p.price > 0) b.prices.push(p.price); if (p.price > b.max) { b.max = p.price; b.maxWo = w.id; } }
+      const rows = Object.values(byArt);
+      body = `<div class="card"><h2>Использованные запчасти за ${PERIODS[state.repPeriod || '365']} · по артикулам</h2><p class="muted small" style="margin-top:0">Складской учёт ЗИП (остатки, приход) в первую версию не входит: здесь только то, что поставлено на технику по нарядам.</p>${tbl('parts', [
+        { h: 'Артикул', v: (b) => b.art, f: (b) => `<b>${esc(b.art)}</b>` }, { h: 'Наименование', v: (b) => b.name, f: (b) => esc(b.name) },
+        { h: 'Нарядов', num: 1, v: (b) => b.n, f: (b) => b.n }, { h: 'Шт', num: 1, v: (b) => b.qty, f: (b) => b.qty }, { h: 'Сумма', num: 1, v: (b) => b.sum, f: (b) => rub(b.sum) },
+        { h: 'Медиана цены', num: 1, v: (b) => D.partsMedian[b.art] || 0, f: (b) => (D.partsMedian[b.art] ? rub(D.partsMedian[b.art]) : '—') },
+        { h: 'Макс. цена', num: 1, v: (b) => b.max, f: (b) => (b.max ? `${rub(b.max)} ${D.partsMedian[b.art] ? idxPill(b.max / D.partsMedian[b.art]) : ''}<div class="muted small"><a href="${woHref(b.maxWo)}">${b.maxWo}</a></div>` : '—') },
+      ], rows.sort((a, b) => b.sum - a.sum))}</div>`;
+    } else if (tab === 'signals') {
+      const byCode = {}; sig.forEach((s) => (byCode[s.code] = (byCode[s.code] || 0) + 1));
+      body = `<div class="grid g2" style="margin-bottom:14px"><div class="card"><h2>Сигналы по видам</h2>${hbar(Object.entries(byCode).map(([k, v]) => ({ label: `${k} · ${RCODES[k]}`, value: v, color: k === 'R3' || k === 'R7' ? '#c92a2a' : '#e67700' })), { fmtV: (v) => v + ' шт' })}</div>
+        <div class="card"><h2>Как работают</h2><ul class="small" style="margin:0;padding-left:18px"><li><b>R1</b> тот же узел той же единицы ремонтируют второй раз за 30 дней — брак работы или фиктивный ремонт</li><li><b>R2</b> один артикул на одной единице ставят дважды за 90 дней</li><li><b>R3</b> одинаковое фото в разных нарядах (хеш снимка)</li><li><b>R4</b> цена запчасти выше медианы по артикулу более чем на 25%</li><li><b>R5</b> плановое ТО просрочено на 10% интервала и больше</li><li><b>R6</b> закрытый наряд с суммой без акта 1С 45 дней, или акт расходится с нарядом более чем на 5%</li><li><b>R7</b> закрытие подтвердил сам исполнитель или автор наряда</li><li><b>T1, T2</b> поля правили в тикете вручную; тикет заведён в Трекере без наряда</li></ul></div></div>
+      <div class="card">${tbl('rsig', [
+        { h: 'Код', v: (s) => s.code, f: (s) => `<b>${s.code}</b><div class="muted small">${RCODES[s.code]}</div>` },
+        { h: 'Сигнал', v: (s) => s.title, f: (s) => esc(s.title) },
+        { h: 'Наряд', v: (s) => s.wo || '', f: (s) => (s.wo ? `<a href="${woHref(s.wo)}">${s.wo}</a>` : '—') },
+        { h: 'Единица', v: (s) => UNIT[s.unit]?.model || '', f: (s) => unitLabel(s.unit) },
+        { h: 'Локация', v: (s) => OBJ[s.object].name, f: (s) => objLink(s.object) },
+        { h: 'Критичность', v: (s) => s.sev, f: (s) => pill(RSEV[s.sev][0], RSEV[s.sev][1]) },
+        { h: 'Сумма под риском', num: 1, v: (s) => Math.abs(s.amount), f: (s) => (s.amount ? rub(Math.abs(s.amount)) : '—') },
+      ], sig)}</div>`;
+    } else if (tab === 'tracker') {
+      const cnt = {}; wos.forEach((w) => (cnt[w.ticket.sync] = (cnt[w.ticket.sync] || 0) + 1));
+      const map = [['Серийный номер ПРТ / Серийный номер', 'единица → серийный №', 'при создании'], ['Компонент', 'локация → компонент очереди', 'при создании'], ['Тип', 'ПРТ → repair, остальное → task', 'при создании'], ['Тип работ, Тип повреждения, Что повреждено', 'вид работ, тип повреждения, узел', 'при создании'], ['Моточасы', 'показание счётчика из наряда (фото)', 'при создании и закрытии'], ['Дата начала / окончания простоя', 'создание наряда / закрытие', 'при изменении'], ['Стоимость ЗИП', 'сумма строк запчастей', 'при закрытии'], ['Стоимость ремонта/ТО', 'запчасти + работы подрядчика', 'при закрытии'], ['Вложения', 'фото всех этапов (копии; оригиналы с хешем — в RE Hub)', 'при добавлении'], ['Статус, исполнитель, комментарии', '← читаем из Трекера каждые 15 мин', 'обратно']];
+      body = `<div class="grid g2" style="margin-bottom:14px">
+        <div class="card"><h2>Состояние синхронизации</h2>${hbar(Object.entries(cnt).map(([k, v]) => ({ label: SYNC[k][0], value: v, color: SYNC[k][1] === 'good' ? '#2b8a3e' : SYNC[k][1] === 'warn' ? '#e67700' : '#c92a2a' })), { fmtV: (v) => v + ' нарядов' })}
+          <p class="small" style="margin-bottom:0"><b>Кто главный:</b> статус, исполнитель и комментарии живут в Трекере, RE Hub их читает. Запчасти, стоимость, фото и моточасы живут в RE Hub и дописываются в тикет. Правка этих полей в тикете вручную не перезаписывает наряд, а создаёт расхождение на разбор (T1). Тикет, заведённый в Трекере мимо RE Hub, подтягивается как наряд «на дозаполнение» (T2).</p></div>
+        <div class="card"><h2>Маршрутизация и поля тикета</h2><table class="small"><thead><tr><th>Поле в очереди</th><th>Откуда в наряде</th><th>Когда</th></tr></thead><tbody>${map.map((r) => `<tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td class="muted">${r[2]}</td></tr>`).join('')}</tbody></table>
+          <p class="muted small" style="margin-bottom:0">Очередь в демо одна — EXPL. В системе очередь, тип и компонент выбираются по справочнику маршрутизации: тип техники + локация.</p></div>
+      </div>
+      <div class="card"><h2>Наряды с расхождениями и тикеты без нарядов</h2>${tbl('wdiff', [
+        { h: 'Наряд', v: (w) => w.id, f: (w) => `<a href="${woHref(w)}"><b>${w.id}</b></a><div class="muted small">${dt(w.created)}</div>` },
+        { h: 'Тикет', v: (w) => w.ticket.key, f: (w) => `${w.ticket.key} ${syncPill(w)}` },
+        { h: 'Единица', v: (w) => UNIT[w.unit]?.model || '', f: (w) => unitLabel(w.unit) },
+        { h: 'Локация', v: (w) => OBJ[w.object].name, f: (w) => objLink(w.object) },
+        { h: 'В наряде', num: 1, v: (w) => w.total, f: (w) => (w.ticket.sync === 'manual' ? '<span class="bad">нет фото, запчастей, стоимости</span>' : rub(w.total)) },
+        { h: 'В тикете', num: 1, v: (w) => w.ticket.trackerCost || 0, f: (w) => (w.ticket.trackerCost ? `<span class="bad">${rub(w.ticket.trackerCost)}</span>` : '—') },
+      ], wos.filter((w) => w.ticket.sync === 'diff' || w.ticket.sync === 'manual'))}</div>`;
+    } else if (tab === 'new') body = newWOForm();
+    return `<h1>Ремонт и обслуживание техники</h1><div class="sub">Наряды на ремонт и ТО всей техники и оборудования с фото повреждений, ремонта и запчастей ${src('HUB')} · каждый наряд автоматически становится тикетом ${src('ТРЕКЕР')} · затраты сверяются с актами ${src('1С')}</div>
+    <div class="kpis">
+      ${kpi('Единиц техники', us.length, `ПРТ ${us.filter((u) => u.kind === 'ПРТ').length} · инженерное ${us.filter((u) => u.kind !== 'ПРТ').length} · <span class="${us.some((u) => !u.inv) ? 'bad' : ''}">без инв. № ${us.filter((u) => !u.inv).length}</span>`)}
+      ${kpi('Открытых нарядов', open.length, `ждут запчасти: ${open.filter((w) => w.status === 'Ждёт запчасти').length}`)}
+      ${kpi(`Нарядов за ${PERIODS[state.repPeriod || '365']}`, per.length, `плановых ТО ${pct0(per.length ? per.filter((w) => w.kind === 'Плановое ТО').length / per.length : 0)} <span class="muted">(ориентир ≥ 80%)</span>`)}
+      ${kpi('Затраты на ремонт и ТО', mln(sum(per, 'total')), `запчасти ${mln(sum(per, partsSum))} · подрядчики ${mln(sum(per.filter((w) => !w.own), (w) => w.labour.cost))}`)}
+      ${kpi('Простой техники', fmt(sum(per, 'downtimeH')) + ' ч', `среднее время ремонта ${mttr.toFixed(0)} ч`)}
+      ${kpi('Тикеты в Трекере', pct0(wos.length ? synced / wos.length : 0), `${wos.length - synced} расхождений и ожидающих`)}
+      ${kpi('Сигналы аудита', `<span class="${sig.length ? 'bad' : ''}">${sig.length}</span>`, `сумма под риском ${mln(sum(sig, (s) => Math.abs(s.amount)))}`)}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><span class="muted small">Период:</span>${Object.entries(PERIODS).map(([k, l]) => `<button class="btn ${(state.repPeriod || '365') === k ? 'on' : ''}" data-repperiod="${k}" style="padding:3px 10px">${l}</button>`).join('')}</div>
+    <div class="tabs">${tabs.map(([k, l]) => `<button class="btn ${tab === k ? 'on' : ''} ${k === 'new' ? 'primary' : ''}" data-reptab="${k}">${l}</button>`).join('')}</div>${body}`;
+  };
+
+  V.wo = (id) => {
+    const w = WOI[id]; if (!w) return '<h1>Наряд не найден</h1>';
+    const u = UNIT[w.unit], sig = repSignals().filter((s) => s.wo === w.id);
+    const req = REQ_PHOTOS[w.kind] || [], missing = req.filter((st) => !w.photos.some((p) => p.stage === st) && (st !== 'После ремонта' || w.closed));
+    const tf = [['Очередь / тип', `${w.ticket.queue} · ${w.ticket.type}`], ['Компонент', OBJ[w.object].name], ['Серийный номер', u.serial], ['Тип работ', w.kind], ['Что повреждено / тип повреждения', w.node ? `${w.node} · ${w.damage || '—'}` : '—'], ['Моточасы', w.mh ? fmt(w.mh) : '—'], ['Простой', `${w.downtimeH} ч`], ['Стоимость ЗИП', rub(partsSum(w))], ['Стоимость ремонта/ТО', w.ticket.sync === 'diff' ? `<span class="bad">${rub(w.ticket.trackerCost)} в тикете</span> · ${rub(w.total)} в наряде` : rub(w.total)], ['Вложения', `${w.photos.length} фото`]];
+    return `<div class="crumbs"><a href="#/repairs">Ремонт и ТО</a> / ${objLink(w.object)} / <a href="${unitHref(u)}">${esc(u.model)} SN ${esc(u.serial)}</a> / ${w.id}</div>
+    <h1>${w.id} · ${esc(w.what)}</h1>
+    <div class="sub">${woKindPill(w.kind)} ${woStatusPill(w.status)} · создан ${dt(w.created)}${w.closed ? `, закрыт ${dt(w.closed)}` : ''} · тикет <b>${w.ticket.key}</b> ${syncPill(w)}</div>
+    ${state.flash === w.id ? `<div class="card" style="background:#e6f4ea;border-color:#b7e1c1;margin-bottom:14px"><b>Наряд создан.</b> Робот RE Hub создал тикет <b>${w.ticket.key}</b> в очереди ${w.ticket.queue}, заполнил поля и приложил ${w.photos.length} фото. <span class="muted small">Демо: в настоящий Трекер ничего не отправлено.</span></div>` : ''}
+    ${sig.length ? `<div class="card" style="border-color:#f1b2b2;margin-bottom:14px"><h2 class="bad">Сигналы аудита</h2>${sig.map((s) => `<div><b>${s.code}</b> ${esc(s.title)} ${pill(RSEV[s.sev][0], RSEV[s.sev][1])}</div>`).join('')}</div>` : ''}
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card"><h2>Наряд ${src('HUB')}</h2><div class="kv">
+        <div>Единица</div><div>${unitLabel(w.unit)}<div class="small">инв. № ${u.inv || '<span class="bad">нет в учёте</span>'}</div></div>
+        <div>Локация</div><div>${objLink(w.object)}</div>
+        <div>Вид работ</div><div>${esc(w.kind)}</div><div>Узел / повреждение</div><div>${w.node ? `${esc(w.node)} · ${esc(w.damage || '')}` : '—'}</div>
+        <div>Описание</div><div>${esc(w.what)}</div>
+        <div>Моточасы на момент</div><div>${w.mh ? fmt(w.mh) : '—'}</div><div>Простой</div><div>${w.downtimeH} ч</div>
+        <div>Автор наряда</div><div>${w.author ? person(w.author) : '<span class="bad">нет (создан в Трекере)</span>'}</div>
+        <div>Исполнитель</div><div>${execLabel(w)}</div>
+        <div>Работы</div><div>${w.labour.h} ч${w.own ? ' · свои силы' : ' · ' + rub(w.labour.cost)}</div>
+        <div>Подтвердил закрытие</div><div>${w.confirmedBy ? person(w.confirmedBy) + (w.confirmedBy === w.executor || w.confirmedBy === w.author ? ` ${pill('сам себе', 'bad')}` : '') : '—'}</div>
+        <div>Итого по наряду</div><div><b>${rub(w.total)}</b>${w.kind === 'Гарантийный' ? ' · по гарантии' : ''}</div>
+        <div>Акт ${src('1С')}</div><div>${w.act1c ? `${w.act1c} · ${rub(w.actSum)}${Math.abs(w.actSum - w.total) > w.total * 0.05 ? ` ${pill('расходится с нарядом', 'bad')}` : ` ${pill('сходится', 'good')}`}` : w.closed && w.total > 0 && !w.own ? (days(w.closed, D.TODAY) > 45 ? pill('акта нет 45+ дней', 'bad') : '<span class="muted">ожидаем</span>') : '—'}</div>
+      </div></div>
+      <div class="card"><h2>Что ушло в тикет ${src('ТРЕКЕР')} · ${w.ticket.key}</h2><table class="small"><tbody>${tf.map(([k, v]) => `<tr><td class="muted" style="width:45%">${k}</td><td>${v}</td></tr>`).join('')}</tbody></table>
+        <p class="muted small" style="margin-bottom:0">${w.ticket.sync === 'pending' ? 'Наряд создан без связи, тикет будет создан при появлении сети.' : w.ticket.sync === 'manual' ? 'Тикет заведён в Трекере вручную. RE Hub создал наряд на дозаполнение: нужны фото, запчасти, моточасы.' : w.ticket.sync === 'diff' ? 'Поле стоимости в тикете правили вручную. Наряд не перезаписан, расхождение на разборе.' : 'Поля заполнены роботом при создании и закрытии наряда.'}</p></div>
+    </div>
+    <div class="card" style="margin-bottom:14px"><h2>Фотофиксация ${missing.length ? `<span class="bad small">· не хватает: ${missing.join(', ')}</span>` : ''}</h2>${w.photos.length ? `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">${w.photos.map((p) => photoImg(w, p)).join('')}</div>` : '<div class="muted">Фото нет</div>'}<div class="muted small" style="margin-top:8px">Только снимок из приложения: время сервера, геометка, хеш. Загрузка из галереи запрещена (ЗП-03).</div></div>
+    <div class="card"><h2>Запчасти и материалы</h2>${tbl('wparts', [
+      { h: 'Наименование', v: (p) => p.name, f: (p) => esc(p.name) }, { h: 'Артикул', v: (p) => p.art, f: (p) => `<span class="small">${esc(p.art)}</span>` },
+      { h: 'Кол-во', num: 1, v: (p) => p.qty, f: (p) => p.qty }, { h: 'Цена', num: 1, v: (p) => p.price, f: (p) => (p.price ? `${rub(p.price)} ${D.partsMedian[p.art] ? idxPill(p.price / D.partsMedian[p.art]) : ''}` : pill('гарантия', 'acc')) },
+      { h: 'Сумма', num: 1, v: (p) => p.qty * p.price, f: (p) => rub(p.qty * p.price) }, { h: 'Источник', v: (p) => p.source, f: (p) => esc(p.source) }, { h: 'Снятая деталь', v: (p) => p.fate, f: (p) => esc(p.fate) },
+    ], w.parts, { empty: 'Запчасти не использовались' })}</div>`;
+  };
+
+  V.unit = (id) => {
+    const u = UNIT[id]; if (!u) return '<h1>Единица не найдена</h1>';
+    const all = unitWOs(u), per = all.filter(inPeriod), sig = repSignals().filter((s) => s.unit === u.id);
+    const months = {}; all.forEach((w) => { const m = w.created.slice(0, 7); months[m] = (months[m] || 0) + w.total; });
+    const unpl = all.filter((w) => w.kind !== 'Плановое ТО' && w.closed);
+    const mtbf = unpl.length > 1 ? Math.round(days(unpl[unpl.length - 1].created, unpl[0].created) / (unpl.length - 1)) : null;
+    const lt = lastTO(u), od = toOverdue(u);
+    const years = 2026 - u.year, lifeCost = sum(all, 'total'), tco = u.price + lifeCost;
+    return `<div class="crumbs"><a href="#/repairs">Ремонт и ТО</a> / ${objLink(u.object)} / ${u.id}</div>
+    <h1>${esc(u.model)} <span class="muted" style="font-weight:400">· SN ${esc(u.serial)}</span></h1>
+    <div class="sub">${esc(u.kind)} · ${esc(u.type)} · ${esc(u.maker)} · ${pill(u.own, 'neutral')} ${od ? pill(`ТО просрочено на ${od} дн`, 'bad') : pill('ТО по графику', 'good')} ${u.inv ? '' : pill('нет в учёте 1С', 'bad')}</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><span class="muted small">Период:</span>${Object.entries(PERIODS).map(([k, l]) => `<button class="btn ${(state.repPeriod || '365') === k ? 'on' : ''}" data-repperiod="${k}" style="padding:3px 10px">${l}</button>`).join('')}</div>
+    <div class="kpis">
+      ${kpi(`Затраты за ${PERIODS[state.repPeriod || '365']}`, rub(sum(per, 'total')), `запчасти ${rub(sum(per, partsSum))} · нарядов ${per.length}`)}
+      ${kpi('Стоимость моточаса', unitMh(u) ? rub(sum(per, 'total') / unitMh(u)) : '—', u.mh ? `${fmt(unitMh(u))} моточасов за период` : 'моточасы не ведутся')}
+      ${kpi('Ремонтов за период', per.filter((w) => w.kind !== 'Плановое ТО').length, `плановых ТО ${per.filter((w) => w.kind === 'Плановое ТО').length}`)}
+      ${kpi('Наработка между отказами', mtbf ? mtbf + ' дн' : '—')}
+      ${kpi('Простой за период', fmt(sum(per, 'downtimeH')) + ' ч')}
+      ${kpi('Полная стоимость владения', mln(tco), `покупка ${mln(u.price)} + ремонты и ТО ${mln(lifeCost)} за ${years || '<1'} г.`)}
+      ${kpi('Кандидат на замену', lifeCost > u.price * 0.5 || (u.year && 2026 - u.year >= 7) ? '<span class="bad">да</span>' : 'нет', lifeCost > u.price * 0.5 ? 'ремонты > 50% стоимости' : u.year && 2026 - u.year >= 7 ? 'возраст ≥ 7 лет' : '')}
+    </div>
+    ${sig.length ? `<div class="card" style="border-color:#f1b2b2;margin-bottom:14px"><h2 class="bad">Сигналы аудита</h2>${sig.map((s) => `<div><b>${s.code}</b> ${esc(s.title)} ${s.wo ? `· <a href="${woHref(s.wo)}">${s.wo}</a>` : ''} ${pill(RSEV[s.sev][0], RSEV[s.sev][1])}</div>`).join('')}</div>` : ''}
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card"><h2>Паспорт единицы</h2><div class="kv">
+        <div>ID RE Hub</div><div>${u.id}</div><div>Серийный №</div><div>${esc(u.serial)}</div>
+        <div>Инв. № ${src('1С')}</div><div>${u.inv || '<span class="bad">нет — единица не сопоставлена с ОС</span>'}</div>
+        <div>Локация</div><div>${objLink(u.object)}</div><div>Год выпуска</div><div>${u.year}</div>
+        <div>Владение</div><div>${esc(u.own)}</div><div>Стоимость</div><div>${rub(u.price)}</div>
+        <div>Моточасы</div><div>${u.mh ? fmt(u.mh) + (u.toInt ? ` · ТО каждые ${u.toInt}` : '') : 'не ведутся'}</div>
+        <div>Гарантия</div><div>${u.warrantyEnd ? (u.warrantyEnd < D.TODAY ? 'истекла ' : 'до ') + dt(u.warrantyEnd) : '—'}</div>
+        <div>Сервисный договор</div><div>${esc(u.svc)}</div><div>Ответственный</div><div>${person(u.engineer)}</div>
+        <div>Последнее ТО</div><div>${lt ? `${dt(lt.created)} · <a href="${woHref(lt)}">${lt.id}</a>` : '<span class="bad">не было</span>'}</div>
+        <div>QR-этикетка</div><div><span class="small" style="font-family:monospace;background:#f3f4f7;padding:2px 6px;border-radius:4px">rehub://unit/${u.id}</span></div>
+      </div></div>
+      <div class="card"><h2>Затраты по месяцам</h2>${hbar(Object.entries(months).sort().slice(-12).map(([m, v]) => ({ label: m, value: v })), { fmtV: rub })}</div>
+    </div>
+    <div class="card"><h2>История нарядов</h2>${tbl('uwos', woCols(false), all)}</div>`;
+  };
+
+  // ---------- новый наряд с телефона (демо) ----------
+  const NW = () => (state.newWo = state.newWo || { photos: [], parts: [], kind: 'Внеплановый ремонт' });
+  function newWOForm() {
+    const n = NW(), us = fUnits(); if (!n.unit || !UNIT[n.unit]) n.unit = us[0]?.id;
+    const u = UNIT[n.unit];
+    const nodes = u ? (u.kind === 'ПРТ' ? ['АКБ', 'Колёса', 'Гидравлика', 'Мачта', 'Тормоза', 'Электроника'] : ['Вентилятор', 'Насос', 'Электрощит', 'Фильтры', 'Привод ворот', 'Электроника']) : [];
+    const sel = (f, opts, label) => `<label class="small muted">${label}<select data-wof="${f}" style="width:100%;font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;margin-top:2px">${opts.map(([v, l]) => `<option value="${v}" ${n[f] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+    const inp = (f, label, ph = '', type = 'text') => `<label class="small muted">${label}<input data-wof="${f}" type="${type}" value="${esc(n[f] || '')}" placeholder="${ph}" style="width:100%;font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;margin-top:2px;box-sizing:border-box"></label>`;
+    const stages = ['Повреждение', 'Снятая деталь', 'Установленная деталь', 'Счётчик моточасов'];
+    return `<div class="grid g2" style="grid-template-columns:420px minmax(0,1fr)">
+      <div style="background:#1a1d24;border-radius:34px;padding:14px 12px;box-shadow:0 10px 30px rgba(0,0,0,.25)"><div style="background:#fff;border-radius:24px;padding:14px;min-height:640px">
+        <div class="muted small" style="text-align:center">RE Hub · мобильная версия</div>
+        <h2 style="margin:6px 0 10px">Новый наряд</h2>
+        <div style="background:#f3f4f7;border-radius:10px;padding:10px;margin-bottom:10px"><div class="small"><b>QR отсканирован</b> → единица найдена</div>${sel('unit', us.slice(0, 60).map((x) => [x.id, `${x.model} · SN ${x.serial} · ${OBJ[x.object].name}`]), 'Единица')}${u ? `<div class="muted small" style="margin-top:4px">инв. № ${u.inv || '<span class="bad">нет в учёте</span>'} · ${esc(OBJ[u.object].name)} · моточасы ${u.mh ? fmt(u.mh) : '—'}</div>` : ''}</div>
+        <div style="display:grid;gap:8px">
+          ${sel('kind', ['Внеплановый ремонт', 'Плановое ТО', 'Повреждение по вине', 'Гарантийный', 'Диагностика'].map((k) => [k, k]), 'Вид работ')}
+          ${sel('node', nodes.map((k) => [k, k]), 'Что повреждено')}
+          ${inp('what', 'Описание', 'Что случилось')}
+          ${u && u.kind === 'ПРТ' ? inp('mh', 'Моточасы по счётчику', String(u.mh), 'number') : ''}
+          <div><div class="small muted">Фото <span class="bad">· повреждение обязательно</span></div><div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0">${n.photos.map((p) => `<img src="${photo(p.stage.includes('детал') ? 'part' : p.stage.includes('Счётчик') ? 'meter' : u && u.kind === 'ПРТ' ? 'prt' : 'equip', p.seed, p.stage, false)}" style="width:92px;border-radius:6px" title="${p.stage}"/>`).join('')}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">${stages.map((s) => `<button class="btn" data-wophoto="${s}" style="padding:4px 8px;font-size:12px">📷 ${s}</button>`).join('')}</div><div class="muted small">снимок только камерой: время сервера, геометка, хеш</div></div>
+          <div><div class="small muted">Запчасти</div>${n.parts.length ? `<table class="small"><tbody>${n.parts.map((p, i) => `<tr><td>${esc(p.name)}<div class="muted">${esc(p.art)} · ${esc(p.source)}</div></td><td class="num">${p.qty} × ${rub(p.price)}</td><td><button class="btn" data-wodel="${i}" style="padding:0 6px">✕</button></td></tr>`).join('')}</tbody></table>` : ''}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px">${inp('pname', 'Наименование')}${inp('part', 'Артикул')}${inp('pqty', 'Кол-во', '1', 'number')}${inp('pprice', 'Цена, ₽', '', 'number')}${sel('psource', ['Склад ЗИП', 'Закупка', 'Сервисный договор', 'Гарантия'].map((k) => [k, k]), 'Источник')}<button class="btn" data-wopart="1" style="align-self:end">+ Добавить</button></div></div>
+          ${n.err ? `<div class="bad small">${esc(n.err)}</div>` : ''}
+          <button class="btn primary" id="wo-submit" style="padding:12px;font-size:15px">Создать наряд → тикет в Трекере</button>
+          <div class="muted small" style="text-align:center">без связи наряд сохранится и уйдёт при появлении сети</div>
+        </div></div></div>
+      <div><div class="card" style="margin-bottom:14px"><h2>Что произойдёт при нажатии</h2><ol class="small" style="margin:0;padding-left:18px"><li>Проверка: есть единица, вид работ, фото повреждения (для ТО — не обязательно).</li><li>Наряд сохраняется в RE Hub с автором, временем сервера, геометкой фото и хешами снимков.</li><li>Робот RE Hub создаёт тикет в очереди по справочнику маршрутизации (тип техники + локация), заполняет поля «Серийный номер», «Тип работ», «Что повреждено», «Моточасы», прикладывает фото. В наряде появляется номер тикета.</li><li>Дальше статус и исполнитель ведутся в Трекере, а запчасти, стоимость и фото дописываются из RE Hub при закрытии.</li><li>Закрыть наряд можно только с фото «после», моточасами и подтверждением не исполнителя.</li></ol></div>
+      <div class="card"><h2>Почему так, а не форма в Трекере</h2><ul class="small" style="margin:0;padding-left:18px"><li>В существующих тикетах поля стоимости, моточасов и серийного номера заполнены меньше чем в 1% случаев: без обязательных полей и QR-кода данные не появятся.</li><li>Серийный номер из QR сразу связывается с инв. № 1С: затраты ложатся на конкретную единицу, а не «на склад».</li><li>Фото снятых и новых деталей с артикулом — доказательство замены, по нему работают сигналы R2–R4.</li></ul></div></div>
+    </div>`;
+  }
+  function submitWO() {
+    const n = NW(), u = UNIT[n.unit];
+    if (!u) { n.err = 'Выберите единицу'; render(); return; }
+    if (n.kind !== 'Плановое ТО' && !n.photos.some((p) => p.stage === 'Повреждение')) { n.err = 'Нужно фото повреждения — без него наряд не сохраняется (РМ-03)'; render(); return; }
+    const id = 'НР-' + String(D.workOrders.length + 1).padStart(6, '0');
+    const kind = n.kind || 'Внеплановый ремонт', node = kind === 'Плановое ТО' ? null : n.node || 'Электроника';
+    const w = { id, unit: u.id, object: u.object, business: u.business, region: u.region, kind, node, what: n.what || (node ? `Неисправность: ${node}` : 'ТО по регламенту'), damage: node ? 'Поломка' : null,
+      created: D.TODAY, closed: null, status: 'Новый', mh: n.mh ? +n.mh : u.mh, downtimeH: 0, own: true, executor: u.engineer, author: u.engineer,
+      labour: { h: 0, cost: 0 }, parts: n.parts.map((p) => ({ ...p })), act1c: null, actSum: null, confirmedBy: null,
+      photos: n.photos.map((p) => ({ stage: p.stage, seed: p.seed, part: p.stage.includes('детал'), meter: p.stage.includes('Счётчик') })),
+      ticket: { key: 'EXPL-' + (41400 + D.workOrders.length + 300), queue: 'EXPL', type: u.kind === 'ПРТ' ? 'repair' : 'task', sync: 'ok' } };
+    w.total = partsSum(w);
+    D.workOrders.unshift(w); WOI[w.id] = w; repSigCache = null;
+    state.newWo = null; state.flash = w.id;
+    location.hash = woHref(w);
+  }
+
   // ================= ИТ-ИНФРАСТРУКТУРА =================
   const ITCH = idx(D.itChannels, 'object');
   const ITL = idx(D.itLaunch, 'object');
@@ -2139,7 +2542,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const rb = document.getElementById('rolebar'); if (rb) rb.innerHTML = READONLY_ROLES.includes(state.role) ? '<b>Режим аудитора:</b> полный просмотр, включая деньги и журнал изменений · данные только для чтения · каждое действие пишется в журнал' : '';
     if (rb) rb.style.display = rb.innerHTML ? '' : 'none';
     $('#view').innerHTML = fn(param && decodeURIComponent(param), sub && decodeURIComponent(sub));
-    const navR = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', it: 'it' }[route] || route;
+    const navR = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', it: 'it', wo: 'repairs', unit: 'repairs' }[route] || route;
     document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.r === navR));
   }
   window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
@@ -2147,10 +2550,11 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const t = e.target;
     if (t.dataset.filter !== undefined) { state[t.dataset.filter] = t.value; render(); }
     if (t.dataset.exkey) { const m = EX_OVERRIDE(); m[t.dataset.exkey] = +t.value; try { localStorage.setItem('rehub.exstatus', JSON.stringify(m)); } catch (e) {} render(); return; }
+    if (t.dataset.wof !== undefined) { NW()[t.dataset.wof] = t.value; return; }
     if (t.dataset.role !== undefined) { state.role = t.value; try { localStorage.setItem('rehub.role', t.value); } catch (e) {} render(); }
     if (t.dataset.cmp) { t.checked ? state.compare.add(t.dataset.cmp) : state.compare.delete(t.dataset.cmp); render(); }
   });
-  document.addEventListener('input', (e) => { if (e.target.id === 'q') { state.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); } });
+  document.addEventListener('input', (e) => { if (e.target.dataset.wof !== undefined) { NW()[e.target.dataset.wof] = e.target.value; return; } if (e.target.id === 'q') { state.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); } });
   document.addEventListener('click', (e) => {
     const t = e.target;
     if (t.closest('[data-close]') || t.id === 'modal') { $('#modal').classList.add('hidden'); return; }
@@ -2163,6 +2567,13 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const ctr = t.closest('[data-ctr]'); if (ctr) { e.preventDefault(); state.defCtr = ctr.dataset.ctr; render(); return; }
     const ds = t.closest('[data-defstatus]'); if (ds) { state.defStatus = ds.dataset.defstatus; render(); return; }
     const af = t.closest('[data-afilter]'); if (af) { state.assetFilter = af.dataset.afilter; render(); return; }
+    const rt = t.closest('[data-reptab]'); if (rt) { location.hash = '#/repairs/' + rt.dataset.reptab; return; }
+    const rf = t.closest('[data-repfilter]'); if (rf) { state.repFilter = rf.dataset.repfilter; render(); return; }
+    const rp = t.closest('[data-repperiod]'); if (rp) { state.repPeriod = rp.dataset.repperiod; render(); return; }
+    const wp = t.closest('[data-wophoto]'); if (wp) { NW().photos.push({ stage: wp.dataset.wophoto, seed: 'new' + Date.now() }); render(); return; }
+    const wpart = t.closest('[data-wopart]'); if (wpart) { const n = NW(); if (n.pname && +n.pqty > 0 && +n.pprice >= 0) { n.parts.push({ name: n.pname, art: n.part || '—', qty: +n.pqty, price: +n.pprice, source: n.psource || 'Склад ЗИП', fate: 'Утилизирована' }); n.pname = n.part = n.pqty = n.pprice = ''; n.err = ''; } else n.err = 'Заполните наименование, количество и цену запчасти'; render(); return; }
+    const wdel = t.closest('[data-wodel]'); if (wdel) { NW().parts.splice(+wdel.dataset.wodel, 1); render(); return; }
+    if (t.id === 'wo-submit') { submitWO(); return; }
     const itd = t.closest('[data-itdev]'); if (itd) { state.itDev = itd.dataset.itdev; render(); return; }
     if (t.dataset.excsv) { const rows = auditSignals(); const q = (x) => '"' + String(x ?? '').replace(/"/g, '""') + '"'; const csv = '\ufeff' + ['Код;Процесс;Сигнал;Локация;Критичность;Сумма под риском, ₽;Владелец;Обнаружен;Срок;Статус', ...rows.map((s) => [s.code, s.proc, s.title, s.obj ? OBJ[s.obj].name : '', SEV[s.sev][0], s.amount, PPL[s.owner]?.name || '', s.detected, s.due, EX_STATUS[s.status][0]].map(q).join(';'))].join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = 'реестр_исключений_' + D.TODAY + '.csv'; a.click(); return; }
     const tc = t.closest('[data-tcat]'); if (tc) { state.ticketCat = tc.dataset.tcat; render(); return; }
