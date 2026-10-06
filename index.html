@@ -1054,6 +1054,9 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   // ================= VIEWS =================
   const V = {};
 
+  const uiSwitch = () => `<div class="card" style="margin-bottom:14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:${UI() === 'role' ? '#eef6ff' : '#fff7e6'}">
+    <div style="flex:1;min-width:260px"><b style="font-size:15px">${UI() === 'role' ? 'Новая версия: рабочее место по роли' : 'Старая версия: общее меню из 15 разделов'}</b><div class="muted small">${UI() === 'role' ? 'Меню сокращено до 3–4 разделов, первый экран «Сегодня» показывает, что требует действия. Роль меняется в панели сверху.' : 'Все разделы для всех ролей. В новой версии менеджер аренды, инженер эксплуатации и сервисник видят только своё.'}</div></div>
+    <button class="btn primary" data-ui="${UI() === 'role' ? 'full' : 'role'}" style="padding:12px 22px;font-size:15px">${UI() === 'role' ? '← Старая версия' : 'Новая версия →'}</button></div>`;
   V.overview = () => {
     const objs = fObjects(), prs = fProjects(), defs = fDefects(), tks = fTickets();
     const active = prs.filter((p) => !p.done);
@@ -1076,7 +1079,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     }).filter(Boolean);
     const topOver = [...active].sort((a, b) => projDelta(b) - projDelta(a)).slice(0, 8);
     const byCat = {}; tks.forEach((t) => (byCat[t.category] = (byCat[t.category] || 0) + 1));
-    return `<h1>Обзор портфеля</h1><div class="sub">${objs.length} локаций · ${fmt(area)} м² · ${BUS[state.business]?.name || 'все бизнесы'} · ${REG[state.region]?.name || 'все регионы'}</div>
+    return uiSwitch() + `<h1>Обзор портфеля</h1><div class="sub">${objs.length} локаций · ${fmt(area)} м² · ${BUS[state.business]?.name || 'все бизнесы'} · ${REG[state.region]?.name || 'все регионы'}</div>
     <div class="kpis">
       ${kpi('Проектов в работе', active.length, `<span class="${late ? 'warn' : 'good'}">${late} отстают &gt; 2 нед</span>`)}
       ${kpi(`Бюджет активных ${src('ФИН')}`, mln(budget))}
@@ -2203,7 +2206,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   const list = (rows, empty = 'Ничего не требует действия') => (rows.length ? rows.join('') : `<div class="muted" style="padding:8px 0">${empty}</div>`);
   V.today = () => {
     const r = state.role, who = ROLES[r];
-    const head = (t, s) => `<h1>${t}</h1><div class="sub">${s} · <span class="muted">в системе список строится по локациям сотрудника из Staff; в демо — по текущим фильтрам</span></div>`;
+    const head = (t, s) => uiSwitch() + `<h1>${t}</h1><div class="sub">${s} · <span class="muted">в системе список строится по локациям сотрудника из Staff; в демо — по текущим фильтрам</span></div>`;
     if (r === 'lease') {
       const objs = fLocs().filter((o) => o.card.leaseStatus === 'В аренде');
       const ev = [];
@@ -2232,7 +2235,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     }
     if (r === 'svc') {
       const mine = fWO().filter((w) => !w.closed && w.own).slice(0, 10);
-      return `<h1>Мои наряды</h1><div class="sub">Техник видит только свои наряды и кнопку нового. Остальной системы для него нет.</div>
+      return uiSwitch() + `<h1>Мои наряды</h1><div class="sub">Техник видит только свои наряды и кнопку нового. Остальной системы для него нет.</div>
       <div style="max-width:520px"><a class="btn primary" href="#/repairs/new" style="display:block;text-align:center;padding:16px;font-size:16px;text-decoration:none;color:#fff;margin-bottom:14px">📷 Сканировать QR → новый наряд</a>
       <div class="card">${list(mine.map((w) => actRow(`${w.id} · ${esc(w.what)}`, `${UNIT[w.unit]?.model || ''} SN ${UNIT[w.unit]?.serial || ''} · ${esc(OBJ[w.object].name)}`, woStatusPill(w.status), woHref(w))), 'Открытых нарядов нет')}</div></div>`;
     }
