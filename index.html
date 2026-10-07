@@ -122,6 +122,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       <a href="#/audit" data-r="audit">Контроль и аудит</a>
       <a href="#/lease" data-r="lease">Аренда</a>
       <a href="#/contracts" data-r="contracts">Договоры</a>
+      <a href="#/mail" data-r="mail">Переписка</a>
       <a href="#/about" data-r="about" style="margin-top:10px;border:1px solid #2c3550">О проекте</a>
     </nav>
     <div class="sources">
@@ -952,7 +953,50 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
   // истёкший договор, по которому продолжаются оплаты
   for (const c of pickN(contracts.filter((x) => x.status === 'Истёк'), 6)) c.paidAfterEnd = Math.round(c.sumYear / 12 * int(1, 4) / 1000) * 1000;
 
-  window.DB = { TODAY: iso(TODAY), contracts, businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets, itChannels, itDevices, itLaunch, itTickets, mdLog, units, workOrders, partsMedian };
+  // ---------- Входящая переписка по локациям (ТЗ 5.19) ----------
+  const MAIL_CATS = { 'Требует ответа': 5, 'Информационное': null, 'Претензия': 3, 'Счёт': 5, 'Индексация': 5, 'Акт': 5, 'Аварийное': 1 };
+  const domainOf = (name) => name.toLowerCase().replace(/[«»"]/g, '').replace(/ооо|ао|ип|ск|уц/g, '').trim().replace(/[^a-zа-яё0-9]+/g, '-').replace(/^-|-$/g, '') + '.ru';
+  const subjBy = {
+    'Арендодатель': [['Индексация арендной платы с 1 января', 'Индексация'], ['Счёт за переменную часть за месяц', 'Счёт'], ['Протечка кровли: претензия арендатору', 'Претензия'], ['Плановое отключение электроснабжения', 'Информационное'], ['Продление договора: предложение условий', 'Требует ответа'], ['Акт сверки взаиморасчётов', 'Акт']],
+    'Провайдер связи': [['Плановые работы на магистрали, перерыв связи', 'Информационное'], ['Счёт за услуги связи', 'Счёт'], ['Авария на узле, канал недоступен', 'Аварийное'], ['Изменение тарифа с нового года', 'Требует ответа']],
+    'Коммунальные': [['Счёт за электроэнергию', 'Счёт'], ['Показания приборов учёта: запрос', 'Требует ответа'], ['Ограничение подачи тепла', 'Аварийное'], ['Акт выполненных работ по теплоснабжению', 'Акт']],
+    'Сервис техники': [['Акт выполненных работ по ремонту', 'Акт'], ['Счёт за запчасти по наряду', 'Счёт'], ['Запчасть под заказ: срок поставки', 'Информационное'], ['Согласовать замену АКБ', 'Требует ответа'], ['Претензия по оплате просроченного счёта', 'Претензия']],
+    'Подрядчик стройки': [['Ответ на замечание: устранено, фото', 'Требует ответа'], ['Запрос на продление срока этапа', 'Требует ответа'], ['КС-2 за период на подпись', 'Акт'], ['Изменение стоимости по доп. работам', 'Претензия'], ['График работ на следующую неделю', 'Информационное']],
+    'Поставщик': [['Поставка оборудования: срок', 'Информационное'], ['Счёт на предоплату', 'Счёт'], ['Гарантийный случай: запрос документов', 'Требует ответа']],
+  };
+  const mails = [];
+  let mi = 1;
+  const wd = (d, n) => { let k = 0; while (k < n) { d = addDays(d, 1); if (d.getDay() % 6) k++; } return d; };
+  for (const o of objects.filter((x) => x.status === 'В эксплуатации' || projects.some((p) => p.object === x.id && !p.done))) {
+    const n = int(3, 10);
+    for (let i = 0; i < n; i++) {
+      const r = rnd();
+      let kind, from, entity, role, owner;
+      const cs = contracts.filter((c) => c.object === o.id), pr = projects.find((p) => p.object === o.id && !p.done), wos = (typeof workOrders !== 'undefined' ? workOrders : []).filter((w) => w.object === o.id && !w.own);
+      if (r < 0.3 && o.lease) { kind = 'Арендодатель'; from = o.lease.landlord; entity = { type: 'lease', id: o.id, label: 'Договор аренды' }; role = 'lease'; owner = o.leaseManager; }
+      else if (r < 0.45 && cs.some((c) => c.cat === 'Связь')) { const c = pick(cs.filter((x) => x.cat === 'Связь')); kind = 'Провайдер связи'; from = c.contractor; entity = { type: 'contract', id: c.id, label: c.subject }; role = 'ops'; owner = o.opsEngineer; }
+      else if (r < 0.6 && cs.some((c) => c.cat === 'Коммунальные')) { const c = pick(cs.filter((x) => x.cat === 'Коммунальные')); kind = 'Коммунальные'; from = c.contractor; entity = { type: 'contract', id: c.id, label: c.subject }; role = 'ops'; owner = o.opsEngineer; }
+      else if (r < 0.78 && wos.length) { const w = pick(wos); kind = 'Сервис техники'; from = w.executor; entity = { type: 'wo', id: w.id, label: `Наряд ${w.id}` }; role = 'ops'; owner = o.opsEngineer; }
+      else if (r < 0.93 && pr) { kind = 'Подрядчик стройки'; from = contractors.find((c) => c.id === pr.contractor).name; entity = { type: 'project', id: pr.id, label: `Проект ${pr.id}` }; role = 'pm'; owner = pr.manager; }
+      else if (cs.length) { const c = pick(cs); kind = 'Поставщик'; from = c.contractor; entity = { type: 'contract', id: c.id, label: c.subject }; role = 'ops'; owner = o.opsEngineer; }
+      else continue;
+      const [subject, cat] = pick(subjBy[kind]);
+      const date = addDays(TODAY, -int(0, 120)), dueDays = MAIL_CATS[cat];
+      const due = dueDays ? iso(wd(date, dueDays)) : null;
+      let status = 'Ждёт ответа', answeredAt = null;
+      if (!dueDays) status = 'Информационное';
+      else if (rnd() < (days_(date, TODAY) > 12 ? 0.9 : 0.45)) { status = 'Отвечено'; answeredAt = iso(wd(date, int(0, dueDays + 2))); }
+      else if (days_(date, TODAY) > 40 && rnd() < 0.5) { status = 'Закрыто вручную'; }
+      const unlinked = rnd() < 0.06;
+      const check = cat === 'Счёт' ? pick(['совпадает', 'совпадает', 'совпадает', 'расхождение с начислением 1С']) : cat === 'Индексация' ? pick(['совпадает с договором', 'выше условия договора']) : cat === 'Акт' ? pick(['совпадает', 'совпадает', 'нет наряда / КС-2']) : null;
+      mails.push({ id: 'ПМ-' + String(mi++).padStart(5, '0'), object: unlinked ? null : o.id, objectGuess: o.id, business: o.business, region: o.region, kind, from, email: 'info@' + domainOf(from), subject: `${subject}${entity.type === 'lease' ? '' : ' · ' + o.name}`,
+        date: iso(date), cat, due, status: unlinked ? 'Неразобранное' : status, answeredAt, role, owner, entity: unlinked ? null : entity, attachments: cat === 'Счёт' || cat === 'Акт' ? 1 : rnd() < 0.3 ? int(1, 3) : 0, check, confirmed: rnd() < 0.8,
+        preview: pick(['Добрый день! Направляем документ во вложении, просим рассмотреть и дать ответ в установленный срок.', 'Коллеги, информируем о плановых работах. Дополнительных действий с вашей стороны не требуется.', 'Просим согласовать предложенные условия до конца недели, иначе работы будут приостановлены.', 'Во вложении счёт и акт. Просим подписать и вернуть скан.']) });
+    }
+  }
+  mails.sort((a, b) => b.date.localeCompare(a.date));
+
+  window.DB = { TODAY: iso(TODAY), contracts, mails, businesses, directions, regions, people, contractors, works, objects, projects, defects, acceptances, tickets, standards, layouts, candidates, stagesAll, assets, itChannels, itDevices, itLaunch, itTickets, mdLog, units, workOrders, partsMedian };
 })();
 </script>
   <script>
@@ -1296,7 +1340,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     rows.forEach((r) => { r.share = tot ? r.total / tot : 0; r.m2 = r.area ? r.total / r.area : 0; });
     return { rows: rows.sort((a, b) => b.total - a.total), total: tot, shared, notes: [...notes] };
   }
-  const OBJ_TABS_ALL = [['summary', 'Обзор'], ['units', 'Договор и допсоглашения'], ['passport', 'Паспорт и техника'], ['areas', 'Площади'], ['lease', 'Аренда и договор'], ['costs', 'Затраты по статьям'], ['resp', 'Ответственность'], ['checks', 'Проверки и риски'], ['contacts', 'Контакты'], ['contracts', 'Все договоры'], ['projects', 'Проекты и стройка'], ['arch', 'Архитектура'], ['assets', 'Оборудование и ОС'], ['it', 'ИТ'], ['ops', 'Эксплуатация']];
+  const OBJ_TABS_ALL = [['summary', 'Обзор'], ['units', 'Договор и допсоглашения'], ['passport', 'Паспорт и техника'], ['areas', 'Площади'], ['lease', 'Аренда и договор'], ['costs', 'Затраты по статьям'], ['resp', 'Ответственность'], ['checks', 'Проверки и риски'], ['contacts', 'Контакты'], ['contracts', 'Все договоры'], ['mail', 'Переписка'], ['projects', 'Проекты и стройка'], ['arch', 'Архитектура'], ['assets', 'Оборудование и ОС'], ['it', 'ИТ'], ['ops', 'Эксплуатация']];
   const OBJ_TABS = OBJ_TABS_ALL;
   const objTabs = () => (UI() === 'role' && ROLE_TABS[state.role] ? OBJ_TABS_ALL.filter(([k]) => ROLE_TABS[state.role].includes(k)) : OBJ_TABS_ALL);
   const DEMO_URL = 'https://evgeniygorbachev-glitch.github.io/re-hub/';
@@ -1428,6 +1472,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     if (tab === 'checks') body = `<div class="grid g2"><div class="card"><h2>Плановые проверки</h2><table><thead><tr><th>Вид</th><th>Последняя</th><th>Результат</th><th>Следующая</th></tr></thead><tbody>${c.inspections.map((i) => `<tr><td><b>${i.kind}</b></td><td>${fv(i.last, dt)}</td><td>${pill(i.result + (i.remarks ? ` (${i.remarks})` : ''), i.result === 'Без замечаний' ? 'good' : i.result === 'Замечания' ? 'warn' : 'bad')}</td><td class="${i.next < D.TODAY ? 'bad' : ''}">${dt(i.next)}${i.next < D.TODAY ? ' · просрочена' : ''}</td></tr>`).join('')}</tbody></table><div class="muted small" style="margin-top:6px">ПБ — пожарная безопасность, ЭОМ — электрооборудование, ОВиК — отопление, вентиляция, кондиционирование, ОТ — охрана труда</div></div>
       <div class="card"><h2>Риски (автоматически)</h2>${riskList(risks)}<div class="muted small" style="margin-top:8px">Правила расчёта — в документе «Карточка локации: модель данных», раздел 3</div></div></div>`;
     if (tab === 'contracts') body = allContractsOf(o);
+    if (tab === 'mail') body = mailOf(o);
     if (tab === 'contacts') {
       const row = (r) => `<tr><td class="muted">${esc(r[0])}</td><td>${r[1] ? esc(r[1]) : NF}</td>${r.length > 2 ? `<td class="small">${r[1] ? esc(r[2]) : ''}</td><td class="small">${r[1] ? esc(r[3]) : ''}</td>` : ''}</tr>`;
       body = `<div class="grid g2"><div class="card"><h2>Наши ответственные</h2><table><tbody>${c.contacts.our.filter((r) => r[1] !== undefined).map(row).join('')}</tbody></table></div>
@@ -2380,10 +2425,68 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     <div class="card">${tbl('ctrs', ctrCols(true), cs.filter(F[filt][1]).sort((a, b) => a.end.localeCompare(b.end)).slice(0, 300))}</div>`;
   };
 
+  // ================= ВХОДЯЩАЯ ПЕРЕПИСКА (ТЗ 5.19) =================
+  const MAILI = idx(D.mails);
+  const fMails = () => { const os = new Set(fObjects().map((o) => o.id)); return D.mails.filter((m) => os.has(m.object || m.objectGuess)); };
+  const mailOverdue = (m) => m.status === 'Ждёт ответа' && m.due && m.due < D.TODAY ? days(m.due, D.TODAY) : 0;
+  const mailStatusPill = (m) => { const od = mailOverdue(m); return m.status === 'Ждёт ответа' ? pill(od ? `без ответа, просрочено ${od} дн` : `ждёт ответа до ${dt(m.due)}`, od ? 'bad' : 'warn') : pill(m.status, m.status === 'Отвечено' ? 'good' : m.status === 'Неразобранное' ? 'bad' : 'neutral'); };
+  const mailCatPill = (c) => pill(c, { 'Аварийное': 'bad', 'Претензия': 'bad', 'Требует ответа': 'warn', 'Счёт': 'acc', 'Индексация': 'acc', 'Акт': 'acc', 'Информационное': 'neutral' }[c] || 'neutral');
+  const entityHref = (e, oid) => (!e ? null : e.type === 'lease' ? `#/object/${oid}/lease` : e.type === 'contract' ? `#/contract/${e.id}` : e.type === 'wo' ? woHref(e.id) : e.type === 'project' ? `#/object/${oid}/projects` : null);
+  const MAIL_ROLE = { lease: 'Аренда', ops: 'Эксплуатация', pm: 'Проекты' };
+  const mailCols = (withObj) => [
+    { h: 'Дата', v: (m) => m.date, f: (m) => `<span class="small">${dt(m.date)}</span>` },
+    { h: 'От кого', v: (m) => m.from, f: (m) => `<b>${esc(m.from)}</b><div class="muted small">${esc(m.kind)} · ${esc(m.email)}</div>` },
+    { h: 'Тема', v: (m) => m.subject, f: (m) => `<a href="#" data-mail="${m.id}" onclick="return false">${esc(m.subject)}</a>${m.attachments ? ` <span class="muted small">📎 ${m.attachments}</span>` : ''}${m.check && /расхожд|выше|нет/.test(m.check) ? `<div class="bad small">${esc(m.check)}</div>` : ''}` },
+    ...(withObj ? [{ h: 'Локация', v: (m) => (m.object ? OBJ[m.object].name : ''), f: (m) => (m.object ? objLink(m.object) : `<span class="bad">не привязано</span><div class="muted small">похоже на ${esc(OBJ[m.objectGuess].name)}</div>`) }] : []),
+    { h: 'Привязано к', v: (m) => m.entity?.label || '', f: (m) => (m.entity ? `<a href="${entityHref(m.entity, m.object)}">${esc(m.entity.label)}</a>` : '—') },
+    { h: 'Категория', v: (m) => m.cat, f: (m) => mailCatPill(m.cat) + (m.confirmed ? '' : ' <span class="muted small">не подтверждена</span>') },
+    { h: 'Ответственный', v: (m) => PPL[m.owner]?.name || '', f: (m) => `${person(m.owner)}<div class="muted small">${MAIL_ROLE[m.role]}</div>` },
+    { h: 'Статус', v: (m) => (m.status === 'Ждёт ответа' ? 0 : 1) * 1000 - mailOverdue(m), f: (m) => mailStatusPill(m) + (m.answeredAt ? `<div class="muted small">ответ ${dt(m.answeredAt)}</div>` : '') },
+  ];
+  function mailOf(o) {
+    const ms = D.mails.filter((m) => m.object === o.id);
+    const wait = ms.filter((m) => m.status === 'Ждёт ответа'), od = wait.filter(mailOverdue);
+    const byKind = {}; ms.forEach((m) => (byKind[m.kind] = (byKind[m.kind] || 0) + 1));
+    return `<div class="kpis">${kpi('Писем за 120 дней', ms.length, Object.entries(byKind).map(([k, v]) => `${k.toLowerCase()} ${v}`).join(' · '))}${kpi('Ждут ответа', `<span class="${wait.length ? 'warn' : ''}">${wait.length}</span>`, od.length ? `<span class="bad">просрочено ${od.length}</span>` : '')}${kpi('Расхождения по содержанию', `<span class="${ms.some((m) => m.check && /расхожд|выше|нет/.test(m.check)) ? 'bad' : ''}">${ms.filter((m) => m.check && /расхожд|выше|нет/.test(m.check)).length}</span>`, 'счёт против 1С, индексация против договора, акт против наряда')}${kpi('Категория не подтверждена', ms.filter((m) => !m.confirmed).length, 'разметка робота ждёт проверки')}</div>
+    <div class="card"><h2>Переписка по локации ${src('HUB')} <span class="muted small">· технический ящик в копии · все контрагенты</span></h2>${tbl('mail-' + o.id, mailCols(false), ms, { empty: 'Писем нет' })}</div>`;
+  }
+  V.mail = () => {
+    const ms = fMails(), filt = state.mailFilter || '';
+    const F = { '': ['Все', () => true], wait: ['Ждут ответа', (m) => m.status === 'Ждёт ответа'], od: ['Просрочены', (m) => mailOverdue(m) > 0], alarm: ['Аварийные и претензии', (m) => m.cat === 'Аварийное' || m.cat === 'Претензия'], check: ['Расхождения', (m) => m.check && /расхожд|выше|нет/.test(m.check)], unl: ['Неразобранные', (m) => !m.object], unc: ['Категория не подтверждена', (m) => !m.confirmed], lease: ['Аренда', (m) => m.role === 'lease'], ops: ['Эксплуатация', (m) => m.role === 'ops'], pm: ['Стройка', (m) => m.role === 'pm'] };
+    const wait = ms.filter((m) => m.status === 'Ждёт ответа'), od = wait.filter(mailOverdue);
+    const byKind = {}; ms.forEach((m) => (byKind[m.kind] = (byKind[m.kind] || 0) + 1));
+    const answered = ms.filter((m) => m.answeredAt), avg = answered.length ? sum(answered, (m) => days(m.date, m.answeredAt)) / answered.length : 0;
+    return `<h1>Переписка по локациям</h1><div class="sub">Письма контрагентов, попавшие в копию технического ящика: арендодатели, связь, коммунальные, сервис техники, подрядчики стройки, поставщики ${src('HUB')} · робот привязывает к локации и сущности, размечает категорию, считает срок ответа</div>
+    <div class="kpis">${kpi('Писем за 120 дней', ms.length, `${ms.filter((m) => m.attachments).length} с вложениями`)}${kpi('Ждут ответа', `<span class="warn">${wait.length}</span>`, `<span class="bad">просрочено ${od.length}</span>`)}${kpi('Среднее время ответа', avg.toFixed(1) + ' дн', `отвечено ${answered.length}`)}${kpi('Аварийные и претензии', ms.filter((m) => m.cat === 'Аварийное' || m.cat === 'Претензия').length)}${kpi('Расхождения по содержанию', `<span class="bad">${ms.filter((m) => m.check && /расхожд|выше|нет/.test(m.check)).length}</span>`)}${kpi('Неразобранные', `<span class="${ms.some((m) => !m.object) ? 'bad' : ''}">${ms.filter((m) => !m.object).length}</span>`, 'отправитель не найден в контактах')}</div>
+    <div class="grid g2" style="margin-bottom:14px"><div class="card"><h2>По типу контрагента</h2>${hbar(Object.entries(byKind).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v })), { fmtV: (v) => v + ' писем' })}</div>
+    <div class="card"><h2>Как это работает</h2><ol class="small" style="margin:0;padding-left:18px"><li>Сотрудник держит технический ящик RE Hub в копии переписки по локации или пересылает письмо.</li><li>Робот читает ящик каждые 15 минут, вложения кладёт в хранилище с хешем.</li><li>По отправителю и теме письмо привязывается к локации и сущности: договор, проект, наряд. Не нашлось — «неразобранные».</li><li>Категория и срок ответа — по правилам; ответственный подтверждает категорию.</li><li>Ответ с копией на технический ящик закрывает задачу. Нет ответа в срок — сигнал ответственному и руководителю, ×2 — тикет.</li><li>Счёт сверяется с начислением 1С, индексация — с договором, акт — с нарядом.</li></ol></div></div>
+    <div class="tabs">${Object.entries(F).map(([k, [l, fn]]) => `<button class="btn ${filt === k ? 'on' : ''}" data-mailfilter="${k}">${l} (${ms.filter(fn).length})</button>`).join('')}</div>
+    <div class="card">${tbl('mails', mailCols(true), ms.filter(F[filt][1]).slice(0, 300))}</div>`;
+  };
+  function openMail(id) {
+    const m = MAILI[id]; if (!m) return;
+    const od = mailOverdue(m);
+    $('#modal').innerHTML = `<div class="box" style="max-width:760px"><div style="display:flex;justify-content:space-between;align-items:start"><div><div class="muted small">${m.id} · ${dt(m.date)} · ${src('HUB')} технический ящик</div><h1 style="font-size:20px">${esc(m.subject)}</h1></div><button class="btn" data-close>✕</button></div>
+      <div>${mailCatPill(m.cat)} ${mailStatusPill(m)} ${m.confirmed ? '' : pill('категория не подтверждена', 'warn')}</div>
+      <div class="kv" style="margin-top:12px"><div>От кого</div><div><b>${esc(m.from)}</b> · ${esc(m.kind)} · ${esc(m.email)}</div>
+        <div>Локация</div><div>${m.object ? objLink(m.object) : `<span class="bad">не привязано</span> · похоже на ${objLink(m.objectGuess)} <button class="btn" disabled style="padding:1px 8px">Привязать</button>`}</div>
+        <div>Сущность</div><div>${m.entity ? `<a href="${entityHref(m.entity, m.object)}">${esc(m.entity.label)}</a>` : '—'}</div>
+        <div>Ответственный</div><div>${person(m.owner)} · ${MAIL_ROLE[m.role]}</div>
+        <div>Срок ответа</div><div>${m.due ? `${dt(m.due)}${od ? ` <span class="bad">просрочено на ${od} дн</span>` : ''}` : 'не требуется'}</div>
+        <div>Ответ</div><div>${m.answeredAt ? `отправлен ${dt(m.answeredAt)} с копией на технический ящик` : m.status === 'Закрыто вручную' ? 'закрыто вручную с комментарием' : '—'}</div>
+        <div>Проверка содержания</div><div>${m.check ? `<span class="${/расхожд|выше|нет/.test(m.check) ? 'bad' : 'good'}">${esc(m.check)}</span>` : '—'}</div>
+        <div>Вложения</div><div>${m.attachments ? `${m.attachments} файл(а) в хранилище, хеш и время сервера` : 'нет'}</div></div>
+      <div class="card" style="margin-top:12px;background:#fafafa"><div class="muted small">Текст письма</div><div style="margin-top:6px">${esc(m.preview)}</div></div>
+      <div style="margin-top:12px;display:flex;gap:8px"><button class="btn primary" disabled>Ответить (из своего ящика, копия на технический)</button><button class="btn" disabled>Подтвердить категорию</button><button class="btn" disabled>Закрыть вручную</button><span class="muted small" style="align-self:center">действия отключены в демо</span></div></div>`;
+    $('#modal').classList.remove('hidden');
+  }
+  const mailRows = (role, objs) => D.mails.filter((m) => m.role === role && m.status === 'Ждёт ответа' && m.object && objs.some((o) => o.id === m.object)).sort((a, b) => (a.due || '9').localeCompare(b.due || '9'));
+  const mailCard = (role, objs) => { const rows = mailRows(role, objs); return `<div class="card" style="margin-bottom:14px"><h2>Письма ждут ответа <span class="muted small">(${rows.length})</span></h2>${list(rows.slice(0, 8).map((m) => actRow(esc(m.subject), `${esc(m.from)} · ${esc(m.kind)} · ${esc(OBJ[m.object].name)}`, `${mailOverdue(m) ? `<span class="bad">просрочено ${mailOverdue(m)} дн</span>` : `до ${dt(m.due)}`}`, '#/mail')), 'Все письма отвечены')}</div>`; };
+
   // ================= НОВАЯ ВЕРСИЯ: рабочее место по роли =================
   const UI = () => state.ui || 'full';
-  const ROLE_NAV = { lease: ['today', 'objects', 'lease', 'contracts'], ops: ['today', 'repairs', 'ops', 'contracts', 'objects'], pm: ['today', 'projects', 'defects', 'acceptances'], svc: ['today', 'repairs'] };
-  const ROLE_TABS = { lease: ['summary', 'units', 'lease', 'contracts', 'areas', 'costs', 'contacts'], ops: ['summary', 'contracts', 'assets', 'ops', 'resp', 'passport'], pm: ['summary', 'projects', 'arch'], svc: ['summary', 'assets'] };
+  const ROLE_NAV = { lease: ['today', 'objects', 'lease', 'contracts', 'mail'], ops: ['today', 'repairs', 'ops', 'contracts', 'mail', 'objects'], pm: ['today', 'projects', 'defects', 'acceptances', 'mail'], svc: ['today', 'repairs'] };
+  const ROLE_TABS = { lease: ['summary', 'units', 'lease', 'contracts', 'mail', 'areas', 'costs', 'contacts'], ops: ['summary', 'contracts', 'mail', 'assets', 'ops', 'resp', 'passport'], pm: ['summary', 'projects', 'mail', 'arch'], svc: ['summary', 'assets'] };
   const roleNav = () => (UI() === 'role' ? ROLE_NAV[state.role] || null : null);
   const navAllowed = (r) => { const n = roleNav(); if (!n) return r !== 'today'; const base = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', wo: 'repairs', unit: 'repairs', contract: 'contracts' }[r] || r; return n.includes(base) || r === 'about'; };
   const actRow = (title, sub, due, href, cls) => `<a class="click" href="${href}" style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);text-decoration:none;color:inherit"><div><b>${title}</b><div class="muted small">${sub}</div></div><div class="${cls || ''}" style="text-align:right;white-space:nowrap">${due}</div></a>`;
@@ -2399,7 +2502,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       ev.sort((a, b) => a.l - b.l);
       const sig = auditSignals().filter((s) => s.code.startsWith('A') && objs.some((o) => o.id === s.obj));
       return head('Сегодня · аренда', `${objs.length} локаций в работе`) + `<div class="grid g2"><div class="card"><h2>Требует решения <span class="muted small">(${ev.length})</span></h2>${list(ev.slice(0, 15).map((e) => actRow(esc(e.o.name), e.what, `${dt(e.d)}<div class="small">${e.l < 0 ? `${-e.l} дн назад` : `через ${e.l} дн`}</div>`, e.href || `#/object/${e.o.id}/lease`, e.cls)))}</div>
-      <div class="card"><h2>Расхождения по деньгам <span class="muted small">(${sig.length})</span></h2>${list(sig.slice(0, 15).map((s) => actRow(esc(OBJ[s.obj].name), esc(s.title), `<span class="${SEV[s.sev][1] || ''}">${rub(s.amount)}</span>`, `#/object/${s.obj}/costs`)), 'Расхождений нет')}</div></div>`;
+      <div>${mailCard('lease', objs)}<div class="card"><h2>Расхождения по деньгам <span class="muted small">(${sig.length})</span></h2>${list(sig.slice(0, 15).map((s) => actRow(esc(OBJ[s.obj].name), esc(s.title), `<span class="${SEV[s.sev][1] || ''}">${rub(s.amount)}</span>`, `#/object/${s.obj}/costs`)), 'Расхождений нет')}</div></div></div>`;
     }
     if (r === 'ops') {
       const os = fObjects(); const oid = new Set(os.map((o) => o.id));
@@ -2409,14 +2512,14 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       const bad = fAssets().filter((a) => a.status === 'Требует ремонта' || a.status === 'К списанию');
       return head('Сегодня · эксплуатация', `${os.length} локаций`) + `<div class="kpis">${kpi('Открытых тикетов', tk.length, `просрочено SLA: ${tk.filter((t) => days(t.created, D.TODAY) * 24 > t.slaH).length}`)}${kpi('Открытых нарядов', wo.length, `ждут запчасти ${wo.filter((w) => w.status === 'Ждёт запчасти').length}`)}${kpi('ТО просрочено', `<span class="${us.length ? 'bad' : ''}">${us.length}</span>`)}${kpi('Оборудование к ремонту', bad.length)}</div>
       <div class="grid g2"><div class="card"><h2>Тикеты ${src('ТРЕКЕР')}</h2>${list(tk.slice(0, 12).map((t) => actRow(esc(t.summary), `${esc(OBJ[t.object].name)} · ${esc(t.category)} · ${esc(t.priority)}`, `${days(t.created, D.TODAY)} дн`, `#/object/${t.object}/ops`, days(t.created, D.TODAY) * 24 > t.slaH ? 'bad' : '')))}</div>
-      <div><div class="card" style="margin-bottom:14px"><h2>Наряды на ремонт ${src('HUB')} <a class="btn primary" href="#/repairs/new" style="float:right;text-decoration:none;color:#fff;padding:3px 10px">+ Наряд</a></h2>${list(wo.slice(0, 8).map((w) => actRow(`${w.id} · ${esc(w.what)}`, `${UNIT[w.unit]?.model || ''} · ${esc(OBJ[w.object].name)}`, woStatusPill(w.status), woHref(w))))}</div>
+      <div>${mailCard('ops', os)}<div class="card" style="margin-bottom:14px"><h2>Наряды на ремонт ${src('HUB')} <a class="btn primary" href="#/repairs/new" style="float:right;text-decoration:none;color:#fff;padding:3px 10px">+ Наряд</a></h2>${list(wo.slice(0, 8).map((w) => actRow(`${w.id} · ${esc(w.what)}`, `${UNIT[w.unit]?.model || ''} · ${esc(OBJ[w.object].name)}`, woStatusPill(w.status), woHref(w))))}</div>
       <div class="card"><h2>Плановое ТО просрочено</h2>${list(us.slice(0, 8).map((u) => actRow(`${esc(u.model)} · SN ${esc(u.serial)}`, esc(OBJ[u.object].name), `<span class="bad">+${toOverdue(u)} дн</span>`, unitHref(u))))}</div></div></div>`;
     }
     if (r === 'pm') {
       const ps = fProjects().filter((p) => !p.done).sort((a, b) => deltaDays(b) - deltaDays(a));
       const ds = fDefects().filter((d) => d.status === 'Просрочено' || d.status === 'Открыто').sort((a, b) => a.due.localeCompare(b.due));
       return head('Сегодня · проекты', `${ps.length} активных проектов`) + `<div class="grid g2"><div class="card"><h2>Проекты с отставанием</h2>${list(ps.filter((p) => deltaDays(p) > 0).slice(0, 10).map((p) => actRow(`${p.id} · ${esc(OBJ[p.object].name)}`, `${esc(p.type)} · ${esc(CTR[p.contractor].name)}`, `<span class="${deltaDays(p) > 30 ? 'bad' : 'warn'}">+${deltaDays(p)} дн</span>`, `#/object/${p.object}/projects`)), 'Все проекты в графике')}</div>
-      <div class="card"><h2>Замечания подрядчикам</h2>${list(ds.slice(0, 12).map((d) => actRow(esc(d.title), `${esc(OBJ[d.object].name)} · ${esc(CTR[d.contractor].name)}`, `${d.status === 'Просрочено' ? '<span class="bad">просрочено</span><div class="small">' : '<div class="small">до '}${dt(d.due)}</div>`, `#/defects`)))}</div></div>`;
+      <div>${mailCard('pm', fObjects())}<div class="card"><h2>Замечания подрядчикам</h2>${list(ds.slice(0, 12).map((d) => actRow(esc(d.title), `${esc(OBJ[d.object].name)} · ${esc(CTR[d.contractor].name)}`, `${d.status === 'Просрочено' ? '<span class="bad">просрочено</span><div class="small">' : '<div class="small">до '}${dt(d.due)}</div>`, `#/defects`)))}</div></div></div>`;
     }
     if (r === 'svc') {
       const mine = fWO().filter((w) => !w.closed && w.own).slice(0, 10);
@@ -2803,6 +2906,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     if (th) { const [id, col] = th.dataset.sort.split(':'); const cur = state.sort[id]; state.sort[id] = { col: +col, dir: cur && cur.col === +col ? -cur.dir : -1 }; render(); return; }
     if (t.matches('input[type=checkbox]') || t.closest('select')) return;
     const def = t.closest('[data-defect]'); if (def) { openDefect(def.dataset.defect); return; }
+    const ml = t.closest('[data-mail]'); if (ml) { openMail(ml.dataset.mail); return; }
+    const mf = t.closest('[data-mailfilter]'); if (mf) { state.mailFilter = mf.dataset.mailfilter; render(); return; }
     if (t.dataset.photo) { openPhoto(t.src); return; }
     const reg = t.closest('[data-region]'); if (reg) { e.preventDefault(); state.region = reg.dataset.region; render(); return; }
     const ctr = t.closest('[data-ctr]'); if (ctr) { e.preventDefault(); state.defCtr = ctr.dataset.ctr; render(); return; }
