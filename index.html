@@ -122,6 +122,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       <a href="#/audit" data-r="audit">Контроль и аудит</a>
       <a href="#/lease" data-r="lease">Аренда</a>
       <a href="#/contracts" data-r="contracts">Договоры</a>
+      <a href="#/utilities" data-r="utilities">Коммунальные</a>
       <a href="#/mail" data-r="mail">Переписка</a>
       <a href="#/about" data-r="about" style="margin-top:10px;border:1px solid #2c3550">О проекте</a>
     </nav>
@@ -947,6 +948,18 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     // начисления и оплаты по месяцам за 12 мес (1С)
     c.pay = []; const m = c.period === 'Ежемесячно' ? 1 : c.period === 'Ежеквартально' ? 3 : 12;
     for (let k = 11; k >= 0; k--) { const d = new Date(TODAY.getFullYear(), TODAY.getMonth() - k, 1); if (d.getMonth() % m !== 0 && m > 1) continue; const due = c.sumYear / 12 * m * between(0.97, 1.03); const active = iso(d) >= c.start && (iso(d) <= c.end || c.autoRenew || c.paidAfterEnd); if (!active) continue; const paid = rnd() < 0.9; c.pay.push({ month: iso(d).slice(0, 7), accrued: Math.round(due / 100) * 100, paid: paid ? Math.round(due / 100) * 100 : 0, paidAt: paid ? iso(addDays(d, int(5, 40))) : null, late: paid && rnd() < 0.15 }); }
+    if (c.cat === 'Коммунальные') {
+      const o = objects.find((x) => x.id === c.object);
+      const res = /Электро/.test(c.subject) ? { kind: 'Электроэнергия', unit: 'кВт·ч', tariff: between(6.2, 8.4), season: (m) => 1 + 0.12 * Math.cos(((m - 1) / 12) * 2 * Math.PI) } : /Тепло/.test(c.subject) ? { kind: 'Тепло', unit: 'Гкал', tariff: between(2300, 3100), season: (m) => (m >= 5 && m <= 9 ? 0.12 : 1.4) } : { kind: 'Вода и водоотведение', unit: 'м³', tariff: between(52, 78), season: () => 1 };
+      c.resource = res.kind; c.unit = res.unit; c.tariffContract = Math.round(res.tariff * 100) / 100;
+      c.contractor = res.kind === 'Электроэнергия' ? 'Региональные Сети' : res.kind === 'Тепло' ? 'ТеплоЭнерго' : 'Водоканал';
+      c.hasVolumes = rnd() < 0.75; // в части счетов объёмов нет (В-22)
+      const tariffK = rnd() < 0.12 ? between(1.06, 1.18) : 1; // тариф выше договорного
+      c.pay.forEach((p) => { const m = +p.month.slice(5, 7); const sk = res.season(m); p.accrued = Math.round(p.accrued * sk / 100) * 100; p.paid = p.paid ? p.accrued : 0; p.tariff = Math.round(c.tariffContract * tariffK * 100) / 100; p.volume = c.hasVolumes ? Math.round(p.accrued / p.tariff) : null; });
+      c.sumYear = c.pay.reduce((a, p) => a + p.accrued, 0) || c.sumYear;
+      c.yoy = rnd() < 0.15 ? between(0.22, 0.45) : between(-0.08, 0.15); // рост ₽/м² год к году
+      if (res.kind === 'Электроэнергия') { c.powerAllowed = Math.round((o.area / 1000) * between(40, 90)); c.powerPeak = Math.round(c.powerAllowed * (rnd() < 0.1 ? between(1.05, 1.2) : between(0.55, 0.95))); }
+    }
     c.log = [{ date: c.start, who: c.approvedBy, what: `Договор внесён (${c.source})` }, ...c.ds.map((d) => ({ date: d.date, who: c.responsible, what: `ДС №${d.no}: ${d.what}` }))];
     if (c.source !== '1С' && rnd() < 0.3) c.log.push({ date: iso(addDays(TODAY, -int(5, 200))), who: c.responsible, what: 'Правка суммы вручную · основание: ' + pick(['письмо контрагента', 'скан ДС', 'без основания']) });
   }
@@ -2382,6 +2395,32 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     <div class="card"><h2>Все договоры локации · по дате окончания</h2>${tbl('ctr-' + o.id, ctrCols(false), rows)}</div>`;
   }
   const CTRI = idx(D.contracts);
+  const COVER = [[/ПРТ/, (u) => u.kind === 'ПРТ'], [/вентиляц/i, (u) => u.type === 'Вентиляция и кондиционирование'], [/холодильн/i, (u) => u.type === 'Холодильное оборудование'], [/АПС/, (u) => u.type === 'Пожарная безопасность'], [/видеонаблюдения/i, (u) => u.type === 'Слаботочные системы'], [/инженерных систем/i, (u) => u.kind !== 'ПРТ' && u.type !== 'Слаботочные системы' && u.type !== 'Пожарная безопасность'], [/лифт/i, () => false]];
+  const coveredUnits = (c) => { const r = COVER.find(([re]) => re.test(c.subject)); return r ? D.units.filter((u) => u.object === c.object && r[1](u)) : null; };
+  const isService = (c) => c.cat === 'Эксплуатация';
+  function coverage(c) {
+    const us = coveredUnits(c); if (!us) return null;
+    const from = isoAdd(-182);
+    const rows = us.map((u) => { const wos = D.workOrders.filter((w) => w.unit === u.id && !w.own); const to = wos.filter((w) => w.kind === 'Плановое ТО'); const last = to[0]; return { u, to: to.filter((w) => w.created >= from).length, last: last ? last.created : null, repairs: wos.filter((w) => w.kind !== 'Плановое ТО' && w.created >= from).length, cost: sum(wos.filter((w) => w.created >= from), 'total'), ok: !!last && last.created >= from }; });
+    const covered = rows.filter((r) => r.ok).length;
+    const paid = sum(c.pay.filter((p) => p.month >= from.slice(0, 7)), 'paid');
+    const done = sum(rows, 'cost');
+    return { rows, covered, total: rows.length, paid, done, pct: rows.length ? covered / rows.length : 0, orphan: rows.length > 0 && !rows.some((r) => r.to || r.repairs) && paid > 0 };
+  }
+  function coverageBlock(c) {
+    const cv = coverage(c); if (!cv) return `<div class="card" style="margin-bottom:14px"><h2>Покрытие договора</h2><div class="muted">Для этого предмета договора единицы оборудования в реестре не ведутся (лифты, подъёмники — ❓ добавить в реестр единиц)</div></div>`;
+    if (!cv.total) return `<div class="card" style="margin-bottom:14px"><h2>Покрытие договора</h2><div class="bad">На локации нет ни одной единицы, подходящей под предмет договора: за что платим?</div></div>`;
+    return `<div class="card" style="margin-bottom:14px"><h2>Покрытие договора: что реально обслужено за 6 месяцев ${src('HUB')}</h2>
+      <div class="kpis"><div class="kpi"><div class="l">Единиц под договором</div><div class="v">${cv.total}</div></div><div class="kpi"><div class="l">Прошли плановое ТО</div><div class="v ${cv.pct < 0.8 ? 'bad' : 'good'}">${cv.covered} · ${pct0(cv.pct)}</div><div class="d">норма ≥ 80% за полгода</div></div><div class="kpi"><div class="l">Оплачено по договору</div><div class="v">${rub(cv.paid)}</div><div class="d">за 6 мес ${src('1С')}</div></div><div class="kpi"><div class="l">Выполнено по нарядам</div><div class="v ${cv.done < cv.paid * 0.5 ? 'bad' : ''}">${rub(cv.done)}</div><div class="d">ТО и ремонты подрядчиков по единицам${cv.orphan ? ' · <span class="bad">нарядов нет — сигнал E10</span>' : ''}</div></div></div>
+      ${tbl('cov-' + c.id, [
+        { h: 'Единица', v: (r) => r.u.model, f: (r) => `<a href="${unitHref(r.u)}"><b>${esc(r.u.model)}</b></a><div class="muted small">SN ${esc(r.u.serial)}${r.u.inv ? ' · ' + r.u.inv : ''}</div>` },
+        { h: 'Плановых ТО за 6 мес', num: 1, v: (r) => r.to, f: (r) => (r.to ? r.to : '<span class="bad">0</span>') },
+        { h: 'Последнее ТО', v: (r) => r.last || '', f: (r) => (r.last ? `<span class="${r.ok ? '' : 'warn'}">${dt(r.last)}</span>` : '<span class="bad">не было</span>') },
+        { h: 'Ремонтов за 6 мес', num: 1, v: (r) => r.repairs, f: (r) => r.repairs || '—' },
+        { h: 'Стоимость по нарядам', num: 1, v: (r) => r.cost, f: (r) => (r.cost ? rub(r.cost) : '—') },
+        { h: 'Покрыта', v: (r) => r.ok, f: (r) => (r.ok ? pill('да', 'good') : pill('нет', 'bad')) },
+      ], cv.rows)}</div>`;
+  }
   V.contract = (id) => {
     const c = CTRI[id]; if (!c) return '<h1>Договор не найден</h1>';
     const o = OBJ[c.object], l = days(D.TODAY, c.end);
@@ -2393,6 +2432,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     if (!c.docLink) risks.push(['bad', 'Нет скана договора']);
     if (c.source !== '1С') risks.push(['warn', 'Введён вручную, не подтверждён 1С']);
     if (c.log.some((x) => /без основания/.test(x.what))) risks.push(['bad', 'Правка суммы без документа-основания']);
+    const cvr = isService(c) ? coverage(c) : null; if (cvr && cvr.total && cvr.pct < 0.8) risks.push(['warn', `Плановое ТО за полгода прошли ${cvr.covered} из ${cvr.total} единиц под договором`]); if (cvr && cvr.orphan) risks.push(['bad', 'Абонентский договор оплачивается, а нарядов по единицам нет (E10)']);
+    if (c.cat === 'Коммунальные' && c.pay.some((p) => p.tariff > c.tariffContract * 1.02)) risks.push(['bad', `Тариф в счетах ${c.pay[c.pay.length - 1].tariff} выше договорного ${c.tariffContract} ₽/${c.unit}`]); if (c.powerPeak && c.powerPeak > c.powerAllowed) risks.push(['bad', `Пиковая мощность ${c.powerPeak} кВт выше разрешённой ${c.powerAllowed} кВт`]); if (c.cat === 'Коммунальные' && c.yoy > 0.2) risks.push(['warn', `₽/м² выросли на ${pct0(c.yoy)} год к году без изменения площади (A4)`]);
     if (c.pay.some((p) => p.accrued && !p.paid)) risks.push(['warn', `Не оплачено периодов: ${c.pay.filter((p) => p.accrued && !p.paid).length}`]);
     return `<div class="crumbs"><a href="#/contracts">Договоры</a> / ${objLink(c.object)} / ${c.id}</div>
     <h1>${esc(c.subject)} <span class="muted" style="font-weight:400">· № ${esc(c.number)}</span></h1>
@@ -2405,10 +2446,37 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       <div class="card"><h2>Ответственные</h2>${kv([['Ведёт договор', person(c.responsible)], ['Согласовал', person(c.approvedBy)], ['Напоминания', `за ${c.notice + 30} и ${c.notice} дн до окончания · ${person(c.responsible)} и руководитель`]])}</div>
       <div class="card"><h2>Допсоглашения</h2>${c.ds.length ? `<table class="small"><thead><tr><th>№</th><th>Дата</th><th>Что меняет</th><th class="num">Δ в год</th></tr></thead><tbody>${c.ds.map((d) => `<tr><td>ДС ${d.no}</td><td>${dt(d.date)}</td><td>${esc(d.what)}</td><td class="num ${d.delta > 0 ? 'bad' : 'good'}">${d.delta > 0 ? '+' : ''}${rub(d.delta)}</td></tr>`).join('')}</tbody></table>` : '<div class="muted">Допсоглашений нет</div>'}</div>
     </div>
+    ${isService(c) ? coverageBlock(c) : ''}
     <div class="grid g2" style="margin-bottom:14px">
-      <div class="card"><h2>Начисления и оплаты ${src('1С')} · 12 мес</h2>${tbl('pay-' + c.id, [{ h: 'Период', v: (p) => p.month, f: (p) => p.month }, { h: 'Начислено', num: 1, v: (p) => p.accrued, f: (p) => rub(p.accrued) }, { h: 'Оплачено', num: 1, v: (p) => p.paid, f: (p) => (p.paid ? rub(p.paid) : '<span class="bad">нет</span>') }, { h: 'Дата оплаты', v: (p) => p.paidAt || '', f: (p) => (p.paidAt ? dt(p.paidAt) + (p.late ? ' <span class="warn small">с задержкой</span>' : '') : '—') }], c.pay, { empty: 'Начислений за период нет' })}</div>
+      <div class="card"><h2>Начисления и оплаты ${src('1С')} · 12 мес</h2>${tbl('pay-' + c.id, [{ h: 'Период', v: (p) => p.month, f: (p) => p.month }, { h: 'Начислено', num: 1, v: (p) => p.accrued, f: (p) => rub(p.accrued) }, { h: 'Оплачено', num: 1, v: (p) => p.paid, f: (p) => (p.paid ? rub(p.paid) : '<span class="bad">нет</span>') }, { h: 'Дата оплаты', v: (p) => p.paidAt || '', f: (p) => (p.paidAt ? dt(p.paidAt) + (p.late ? ' <span class="warn small">с задержкой</span>' : '') : '—') }, ...(c.resource ? [{ h: `Объём, ${c.unit}`, num: 1, v: (p) => p.volume || 0, f: (p) => (p.volume ? fmt(p.volume) : '<span class="muted small">нет в счёте</span>') }, { h: 'Тариф', num: 1, v: (p) => p.tariff, f: (p) => `<span class="${p.tariff > c.tariffContract * 1.02 ? 'bad' : ''}">${p.tariff}</span>` }] : [])], c.pay, { empty: 'Начислений за период нет' })}</div>
       <div class="card"><h2>Журнал изменений ${src('HUB')}</h2>${tbl('log-' + c.id, [{ h: 'Дата', v: (x) => x.date, f: (x) => dt(x.date) }, { h: 'Кто', v: (x) => x.who, f: (x) => person(x.who) }, { h: 'Что', v: (x) => x.what, f: (x) => (/без основания/.test(x.what) ? `<span class="bad">${esc(x.what)}</span>` : esc(x.what)) }], [...c.log].reverse())}</div>
     </div>`;
+  };
+  V.utilities = () => {
+    const cs = fContracts().filter((c) => c.cat === 'Коммунальные'), objs = fObjects().filter((o) => o.status === 'В эксплуатации');
+    const area = (o) => OBJ[o].area;
+    const vari = sum(objs, (o) => sum(o.units || [], (u) => u.varYear || 0));
+    const byRes = {}; cs.forEach((c) => { const b = (byRes[c.resource] = byRes[c.resource] || { n: 0, sum: 0, vol: 0, unit: c.unit, area: 0 }); b.n++; b.sum += c.sumYear; b.area += area(c.object); if (c.hasVolumes) b.vol += sum(c.pay, (p) => p.volume || 0); });
+    const months = {}; cs.forEach((c) => c.pay.forEach((p) => { const m = (months[p.month] = months[p.month] || {}); m[c.resource] = (m[c.resource] || 0) + p.accrued; }));
+    const byObj = {}; cs.forEach((c) => { const b = (byObj[c.object] = byObj[c.object] || { object: c.object, sum: 0, res: {}, risks: [] }); b.sum += c.sumYear; b.res[c.resource] = c; if (c.yoy > 0.2) b.risks.push('рост > 20%'); if (c.pay.some((p) => p.tariff > c.tariffContract * 1.02)) b.risks.push('тариф выше договорного'); if (c.powerPeak > c.powerAllowed) b.risks.push('мощность выше разрешённой'); if (!c.hasVolumes) b.risks.push('нет объёмов'); });
+    const rows = Object.values(byObj).map((b) => ({ ...b, perM2: b.sum / area(b.object) / 12 }));
+    const fmtMed = {}; D.businesses.forEach((bz) => (fmtMed[bz.id] = median(rows.filter((r) => OBJ[r.object].business === bz.id).map((r) => r.perM2))));
+    const resCols = Object.keys(byRes);
+    const risks = { 'рост > 20%': 0, 'тариф выше договорного': 0, 'мощность выше разрешённой': 0, 'нет объёмов': 0 }; rows.forEach((r) => r.risks.forEach((k) => risks[k]++));
+    return `<h1>Коммунальные услуги</h1><div class="sub">Прямые договоры с ресурсоснабжающими организациями ${src('1С')} и переменная часть аренды (перевыставление арендодателем) · ₽/м² в месяц, объёмы и тарифы там, где они есть в счетах</div>
+    <div class="kpis">${kpi('Прямые договоры, в год', mln(sum(cs, 'sumYear')), `${cs.length} договоров · ${rows.length} локаций`)}${kpi('Перевыставление арендодателем', mln(vari), 'переменная часть аренды')}${kpi('₽/м² в месяц (прямые)', fmt(rows.length ? sum(rows, 'sum') / sum(rows, (r) => area(r.object)) / 12 : 0), 'по локациям с прямыми договорами')}${kpi('Объёмы есть в счетах', pct0(cs.length ? cs.filter((c) => c.hasVolumes).length / cs.length : 0), `<span class="${risks['нет объёмов'] ? 'warn' : ''}">без объёмов: ${cs.filter((c) => !c.hasVolumes).length}</span> · В-22`)}${kpi('Рост > 20% год к году', `<span class="${risks['рост > 20%'] ? 'bad' : ''}">${risks['рост > 20%']}</span>`, 'A4: без изменения площади')}${kpi('Тариф выше договорного', `<span class="${risks['тариф выше договорного'] ? 'bad' : ''}">${risks['тариф выше договорного']}</span>`, `мощность выше разрешённой: ${risks['мощность выше разрешённой']}`)}</div>
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card"><h2>По видам ресурсов, в год</h2>${hbar(Object.entries(byRes).sort((a, b) => b[1].sum - a[1].sum).map(([k, v]) => ({ label: `${k} · ${v.n} дог.`, value: v.sum })), { fmtV: mln })}<table class="small" style="margin-top:8px"><thead><tr><th>Ресурс</th><th class="num">₽/м² в мес</th><th class="num">Объём за год</th><th class="num">Средний тариф</th></tr></thead><tbody>${Object.entries(byRes).map(([k, v]) => `<tr><td>${k}</td><td class="num">${fmt(v.sum / v.area / 12)}</td><td class="num">${v.vol ? fmt(v.vol) + ' ' + v.unit : '<span class="muted">нет</span>'}</td><td class="num">${v.vol ? (v.sum * (v.vol ? 1 : 0) / v.vol).toFixed(2) : '—'}</td></tr>`).join('')}</tbody></table></div>
+      <div class="card"><h2>По месяцам, прямые договоры</h2>${hbar(Object.entries(months).sort().slice(-12).map(([m, v]) => ({ label: m, value: Object.values(v).reduce((a, b) => a + b, 0) })), { fmtV: mln })}<div class="legend">Сезонность: тепло зимой, электроэнергия летом (кондиционирование). Пик вне сезона — повод проверить счёт.</div></div>
+    </div>
+    <div class="card"><h2>По локациям · ₽/м² в месяц против медианы формата</h2>${tbl('util', [
+      { h: 'Локация', v: (r) => OBJ[r.object].name, f: (r) => objLink(r.object) + `<div class="muted small">${BUS[OBJ[r.object].business].name} · ${fmt(area(r.object))} м²</div>` },
+      ...resCols.map((k) => ({ h: k, num: 1, v: (r) => (r.res[k] ? r.res[k].sumYear : 0), f: (r) => (r.res[k] ? `<a href="#/contract/${r.res[k].id}">${rub(r.res[k].sumYear)}</a><div class="muted small">${r.res[k].hasVolumes ? fmt(sum(r.res[k].pay, (p) => p.volume || 0)) + ' ' + r.res[k].unit : 'объёмов нет'}</div>` : '<span class="muted">нет договора</span>') })),
+      { h: 'Всего в год', num: 1, v: (r) => r.sum, f: (r) => rub(r.sum) },
+      { h: '₽/м² в мес', num: 1, v: (r) => r.perM2, f: (r) => `${fmt(r.perM2)} ${idxPill(r.perM2 / (fmtMed[OBJ[r.object].business] || r.perM2))}` },
+      { h: 'Год к году', num: 1, v: (r) => Math.max(...Object.values(r.res).map((c) => c.yoy)), f: (r) => { const y = Math.max(...Object.values(r.res).map((c) => c.yoy)); return `<span class="${y > 0.2 ? 'bad' : ''}">${y > 0 ? '+' : ''}${pct0(y)}</span>`; } },
+      { h: 'Сигналы', v: (r) => r.risks.length, f: (r) => (r.risks.length ? r.risks.map((k) => pill(k, k === 'нет объёмов' ? 'neutral' : 'bad')).join(' ') : '—') },
+    ], rows.sort((a, b) => b.perM2 - a.perM2))}</div>`;
   };
   V.contracts = () => {
     const cs = fContracts(), objs = fObjects().filter((o) => o.status === 'В эксплуатации');
@@ -2485,7 +2553,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
 
   // ================= НОВАЯ ВЕРСИЯ: рабочее место по роли =================
   const UI = () => state.ui || 'full';
-  const ROLE_NAV = { lease: ['today', 'objects', 'lease', 'contracts', 'mail'], ops: ['today', 'repairs', 'ops', 'contracts', 'mail', 'objects'], pm: ['today', 'projects', 'defects', 'acceptances', 'mail'], svc: ['today', 'repairs'] };
+  const ROLE_NAV = { lease: ['today', 'objects', 'lease', 'contracts', 'utilities', 'mail'], ops: ['today', 'repairs', 'ops', 'contracts', 'utilities', 'mail', 'objects'], pm: ['today', 'projects', 'defects', 'acceptances', 'mail'], svc: ['today', 'repairs'] };
   const ROLE_TABS = { lease: ['summary', 'units', 'lease', 'contracts', 'mail', 'areas', 'costs', 'contacts'], ops: ['summary', 'contracts', 'mail', 'assets', 'ops', 'resp', 'passport'], pm: ['summary', 'projects', 'mail', 'arch'], svc: ['summary', 'assets'] };
   const roleNav = () => (UI() === 'role' ? ROLE_NAV[state.role] || null : null);
   const navAllowed = (r) => { const n = roleNav(); if (!n) return r !== 'today'; const base = { object: 'objects', compare: 'projects', person: 'people', asset: 'assets', wo: 'repairs', unit: 'repairs', contract: 'contracts' }[r] || r; return n.includes(base) || r === 'about'; };
