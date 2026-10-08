@@ -816,7 +816,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
     const node = kind === 'Плановое ТО' ? null : pick(nodesBy(u));
     const open = days_(d, TODAY) < 12 && rnd() < 0.6;
     const dur = kind === 'Плановое ТО' ? between(2, 6) : between(3, 72);
-    const own = rnd() < (u.kind === 'ПРТ' ? 0.35 : 0.55);
+    const own = rnd() < (kind === 'Плановое ТО' ? 0.1 : u.kind === 'ПРТ' ? 0.35 : 0.55); // плановое ТО — почти всегда подрядчик по сервисному договору
     const parts = [];
     if (kind === 'Плановое ТО') {
       if (u.kind === 'ПРТ') parts.push(mkPart(partsBy['Гидравлика'][1], 'Сервисный договор', 'Утилизирована'), mkPart(partsBy['Гидравлика'][2], 'Сервисный договор', 'Утилизирована'));
